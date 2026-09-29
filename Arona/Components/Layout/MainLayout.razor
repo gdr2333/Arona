@@ -1,0 +1,25 @@
+﻿@inherits LayoutComponentBase
+
+<div class="app-shell">
+    <nav class="app-nav">
+        <a href="/" class="nav-brand">Arona</a>
+        <div class="nav-links">
+            <a href="/chat" class="nav-link">对话</a>
+            <a href="/config" class="nav-link">配置</a>
+            <a href="/providers" class="nav-link">供应商</a>
+            <a href="/models" class="nav-link">模型</a>
+            <a href="/blacklist" class="nav-link">黑名单</a>
+        </div>
+    </nav>
+    <main class="app-main">
+        @Body
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+<FluentProviders />

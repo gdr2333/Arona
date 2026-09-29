@@ -1,0 +1,234 @@
+@page "/config"
+@rendermode InteractiveServer
+@using Arona.Datas.Storage
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.Extensions.Logging
+@inject MainDbContext DbContext
+@inject ILogger<Config> Logger
+
+<PageTitle>配置 - Arona</PageTitle>
+
+<div class="config-page">
+    <h2>配置管理</h2>
+
+    <table class="config-table">
+        <thead>
+            <tr>
+                <th>Key</th>
+                <th>说明</th>
+                <th>Value</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in configList)
+            {
+                var current = item;
+                var meta = GetMeta(current.Id);
+                <tr>
+                    <td class="config-key">@current.Id</td>
+                    <td class="config-desc">
+                        <strong>@meta.Title</strong>
+                        <br />
+                        <span class="config-hint">@meta.Description</span>
+                    </td>
+                    <td>
+                        @if (meta.Type == ConfigType.ChatModel)
+                        {
+                            <select @bind="current.Value" class="config-select">
+                                <option value="">— 未选择 —</option>
+                                @foreach (var opt in chatModelOptions)
+                                {
+                                    <option value="@opt">@opt</option>
+                                }
+                            </select>
+                        }
+                        else if (meta.Type == ConfigType.EmbeddingModel)
+                        {
+                            <select @bind="current.Value" class="config-select">
+                                <option value="">— 未选择 —</option>
+                                @foreach (var opt in embeddingModelOptions)
+                                {
+                                    <option value="@opt">@opt</option>
+                                }
+                            </select>
+                        }
+                        else if (meta.Type == ConfigType.MultilineText)
+                        {
+                            <FluentTextArea @bind-Value="current.Value" Rows="4" Style="width:100%;" />
+                        }
+                        else
+                        {
+                            <FluentTextInput @bind-Value="current.Value" Style="width:100%;" />
+                        }
+                    </td>
+                    <td class="config-actions">
+                        <FluentButton OnClick="() => SaveAsync(current)">保存</FluentButton>
+                        <FluentButton OnClick="() => DeleteAsync(current.Id)" Appearance="ButtonAppearance.Outline">删除</FluentButton>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <div class="config-add">
+        <h3>添加新配置</h3>
+        <div class="config-add-form">
+            <label>键名</label>
+            <select @bind="newId" class="config-select">
+                <option value="">— 手动输入 —</option>
+                @foreach (var kv in KnownConfigs)
+                {
+                    <option value="@kv.Key">@kv.Key — @kv.Value.Title</option>
+                }
+            </select>
+            <FluentTextInput @bind-Value="newId" Placeholder="或手动输入 Key" Style="margin-top:.25rem;" />
+            <label>值</label>
+            <FluentTextArea @bind-Value="newValue" Rows="3" Style="width:100%;" />
+            <FluentButton OnClick="AddAsync" Appearance="ButtonAppearance.Primary" Disabled="string.IsNullOrWhiteSpace(newId)">添加</FluentButton>
+        </div>
+        @if (!string.IsNullOrEmpty(addMessage))
+        {
+            <p class="config-message">@addMessage</p>
+        }
+    </div>
+</div>
+
+@code
+{
+    private List<StringConfig> configList = [];
+    private List<string> chatModelOptions = [];
+    private List<string> embeddingModelOptions = [];
+    private string newId = "";
+    private string newValue = "";
+    private string addMessage = "";
+
+    private enum ConfigType { PlainText, MultilineText, Integer, ChatModel, EmbeddingModel }
+
+    private sealed record ConfigMeta(string Title, string Description, ConfigType Type);
+
+    private static readonly Dictionary<string, ConfigMeta> KnownConfigs = new()
+    {
+        ["Prompt"] = new("Agent 系统提示词", "决定 Agent 的行为与人设，作为 instructions 传给模型。", ConfigType.MultilineText),
+        ["ContextLength"] = new("滑动窗口大小", "从数据库加载的最近消息条数（正整数），用于 Agent 上下文窗口。", ConfigType.Integer),
+        ["ChatModel"] = new("聊天模型", "当前使用的聊天模型，格式为 {ProviderId}:{ModelName}。", ConfigType.ChatModel),
+        ["EmbeddingModel"] = new("嵌入模型", "当前使用的嵌入模型，格式为 {ProviderId}:{ModelName}。", ConfigType.EmbeddingModel),
+    };
+
+    private static ConfigMeta GetMeta(string id) =>
+        KnownConfigs.TryGetValue(id, out var m) ? m : new ConfigMeta("（未知配置项）", "未在代码中引用的自定义配置。", ConfigType.PlainText);
+
+    protected override async Task OnInitializedAsync()
+    {
+        Logger.LogInformation("初始化配置页面");
+        await LoadAsync();
+        await LoadModelOptionsAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            configList = await DbContext.Configs.AsNoTracking().OrderBy(c => c.Id).ToListAsync();
+            Logger.LogDebug("加载配置列表：{Count} 项", configList.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "加载配置列表失败");
+        }
+    }
+
+    private async Task LoadModelOptionsAsync()
+    {
+        try
+        {
+            chatModelOptions = await (
+                from m in DbContext.ChatModels
+                join p in DbContext.ApiProviders on m.ProviderId equals p.Id
+                orderby p.Id, m.ModelName
+                select $"{p.Id}:{m.ModelName}"
+            ).ToListAsync();
+
+            embeddingModelOptions = await (
+                from m in DbContext.EmbeddingModels
+                join p in DbContext.ApiProviders on m.ProviderId equals p.Id
+                orderby p.Id, m.ModelName
+                select $"{p.Id}:{m.ModelName}"
+            ).ToListAsync();
+
+            Logger.LogDebug("加载模型选项：{Chat} 个聊天模型，{Emb} 个嵌入模型", chatModelOptions.Count, embeddingModelOptions.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "加载模型选项失败");
+        }
+    }
+
+    private async Task SaveAsync(StringConfig item)
+    {
+        try
+        {
+            var entity = await DbContext.Configs.FindAsync(item.Id);
+            if (entity is null)
+            {
+                Logger.LogWarning("配置 {Key} 不存在，无法更新", item.Id);
+                return;
+            }
+            entity.Value = item.Value;
+            await DbContext.SaveChangesAsync();
+            Logger.LogInformation("更新配置 {Key}", item.Id);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "更新配置 {Key} 失败", item.Id);
+        }
+    }
+
+    private async Task DeleteAsync(string id)
+    {
+        try
+        {
+            var entity = await DbContext.Configs.FindAsync(id);
+            if (entity is null)
+                return;
+            DbContext.Configs.Remove(entity);
+            await DbContext.SaveChangesAsync();
+            Logger.LogInformation("删除配置 {Key}", id);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "删除配置 {Key} 失败", id);
+        }
+    }
+
+    private async Task AddAsync()
+    {
+        addMessage = "";
+        var key = newId.Trim();
+        if (string.IsNullOrWhiteSpace(key))
+            return;
+
+        try
+        {
+            if (await DbContext.Configs.AnyAsync(c => c.Id == key))
+            {
+                addMessage = $"配置键 \"{key}\" 已存在。";
+                Logger.LogWarning("添加配置失败：键 {Key} 已存在", key);
+                return;
+            }
+            DbContext.Configs.Add(new StringConfig { Id = key, Value = newValue });
+            await DbContext.SaveChangesAsync();
+            Logger.LogInformation("添加配置 {Key}", key);
+            newId = "";
+            newValue = "";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "添加配置 {Key} 失败", key);
+            addMessage = $"添加失败: {ex.Message}";
+        }
+    }
+}

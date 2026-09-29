@@ -1,0 +1,348 @@
+@page "/models"
+@rendermode InteractiveServer
+@using Arona.Datas.Storage
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.Extensions.Logging
+@inject MainDbContext DbContext
+@inject ILogger<Models> Logger
+
+<PageTitle>模型管理 - Arona</PageTitle>
+
+<div class="config-page">
+    <h2>模型管理</h2>
+
+    <h3>聊天模型</h3>
+    <p class="config-hint">复合主键：(ModelId, ProviderId)。Endpoint 为模型 API 地址。</p>
+    <table class="config-table">
+        <thead>
+            <tr>
+                <th>供应商</th>
+                <th>ModelId</th>
+                <th>ModelName</th>
+                <th>Endpoint</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in chatModels)
+            {
+                var current = item;
+                <tr>
+                    <td class="config-key">@current.ProviderId</td>
+                    <td class="config-key">@current.ModelId</td>
+                    <td><FluentTextInput @bind-Value="current.ModelName" Style="width:100%;" /></td>
+                    <td><FluentTextInput @bind-Value="current.Endpoint" Style="width:100%;" /></td>
+                    <td class="config-actions">
+                        <FluentButton OnClick="() => SaveChatModelAsync(current)">保存</FluentButton>
+                        <FluentButton OnClick="() => DeleteChatModelAsync(current)" Appearance="ButtonAppearance.Outline">删除</FluentButton>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <div class="config-add">
+        <div class="config-add-form">
+            <label>供应商</label>
+            <select @bind="newChatProviderId" class="config-select">
+                <option value="">— 选择供应商 —</option>
+                @foreach (var p in providerOptions)
+                {
+                    <option value="@p">@p</option>
+                }
+            </select>
+            <label>ModelId</label>
+            <FluentTextInput @bind-Value="newChatModelId" Placeholder="模型唯一标识" />
+            <label>ModelName</label>
+            <FluentTextInput @bind-Value="newChatModelName" />
+            <label>Endpoint</label>
+            <FluentTextInput @bind-Value="newChatEndpoint" Placeholder="https://..." />
+            <FluentButton OnClick="AddChatModelAsync" Appearance="ButtonAppearance.Primary" Disabled="string.IsNullOrWhiteSpace(newChatProviderId) || string.IsNullOrWhiteSpace(newChatModelId)">添加</FluentButton>
+        </div>
+    </div>
+
+    <h3>嵌入模型</h3>
+    <p class="config-hint">复合主键：(ModelId, ProviderId)。Dimensions 需与数据库配置的向量维度一致。</p>
+    <table class="config-table">
+        <thead>
+            <tr>
+                <th>供应商</th>
+                <th>ModelId</th>
+                <th>ModelName</th>
+                <th>Endpoint</th>
+                <th>维度</th>
+                <th>固定维度</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in embeddingModels)
+            {
+                var current = item;
+                <tr>
+                    <td class="config-key">@current.ProviderId</td>
+                    <td class="config-key">@current.ModelId</td>
+                    <td><FluentTextInput @bind-Value="current.ModelName" Style="width:100%;" /></td>
+                    <td><FluentTextInput @bind-Value="current.Endpoint" Style="width:100%;" /></td>
+                    <td><FluentTextInput @bind-Value="current.Dimensions" Style="width:80px;" /></td>
+                    <td><input type="checkbox" @bind="current.IsFixedDimension" /></td>
+                    <td class="config-actions">
+                        <FluentButton OnClick="() => SaveEmbeddingModelAsync(current)">保存</FluentButton>
+                        <FluentButton OnClick="() => DeleteEmbeddingModelAsync(current)" Appearance="ButtonAppearance.Outline">删除</FluentButton>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <div class="config-add">
+        <div class="config-add-form">
+            <label>供应商</label>
+            <select @bind="newEmbProviderId" class="config-select">
+                <option value="">— 选择供应商 —</option>
+                @foreach (var p in providerOptions)
+                {
+                    <option value="@p">@p</option>
+                }
+            </select>
+            <label>ModelId</label>
+            <FluentTextInput @bind-Value="newEmbModelId" Placeholder="模型唯一标识" />
+            <label>ModelName</label>
+            <FluentTextInput @bind-Value="newEmbModelName" />
+            <label>Endpoint</label>
+            <FluentTextInput @bind-Value="newEmbEndpoint" Placeholder="https://..." />
+            <label>维度</label>
+            <FluentTextInput @bind-Value="newEmbDimensions" Placeholder="如 1536" />
+            <FluentButton OnClick="AddEmbeddingModelAsync" Appearance="ButtonAppearance.Primary" Disabled="string.IsNullOrWhiteSpace(newEmbProviderId) || string.IsNullOrWhiteSpace(newEmbModelId)">添加</FluentButton>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <p class="config-message">@message</p>
+    }
+</div>
+
+@code
+{
+    private List<string> providerOptions = [];
+    private List<ChatModelEdit> chatModels = [];
+    private List<EmbeddingModelEdit> embeddingModels = [];
+    private string message = "";
+
+    private string newChatProviderId = "";
+    private string newChatModelId = "";
+    private string newChatModelName = "";
+    private string newChatEndpoint = "";
+
+    private string newEmbProviderId = "";
+    private string newEmbModelId = "";
+    private string newEmbModelName = "";
+    private string newEmbEndpoint = "";
+    private string newEmbDimensions = "";
+
+    private sealed class ChatModelEdit
+    {
+        public required string ModelId { get; set; }
+        public required string ProviderId { get; set; }
+        public string ModelName { get; set; } = "";
+        public string Endpoint { get; set; } = "";
+    }
+
+    private sealed class EmbeddingModelEdit
+    {
+        public required string ModelId { get; set; }
+        public required string ProviderId { get; set; }
+        public string ModelName { get; set; } = "";
+        public string Endpoint { get; set; } = "";
+        public string Dimensions { get; set; } = "";
+        public bool IsFixedDimension { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Logger.LogInformation("初始化模型管理页面");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            providerOptions = await DbContext.ApiProviders.AsNoTracking().OrderBy(p => p.Id).Select(p => p.Id).ToListAsync();
+
+            chatModels = await DbContext.ChatModels.AsNoTracking()
+                .OrderBy(m => m.ProviderId).ThenBy(m => m.ModelId)
+                .Select(m => new ChatModelEdit
+                {
+                    ModelId = m.ModelId,
+                    ProviderId = m.ProviderId,
+                    ModelName = m.ModelName,
+                    Endpoint = m.ModelEndpoint.ToString()
+                })
+                .ToListAsync();
+
+            embeddingModels = await DbContext.EmbeddingModels.AsNoTracking()
+                .OrderBy(m => m.ProviderId).ThenBy(m => m.ModelId)
+                .Select(m => new EmbeddingModelEdit
+                {
+                    ModelId = m.ModelId,
+                    ProviderId = m.ProviderId,
+                    ModelName = m.ModelName,
+                    Endpoint = m.ModelEndpoint.ToString(),
+                    Dimensions = m.Dimensions.ToString(),
+                    IsFixedDimension = m.IsFixedDimension
+                })
+                .ToListAsync();
+
+            Logger.LogDebug("加载模型：{Chat} 个聊天模型，{Emb} 个嵌入模型", chatModels.Count, embeddingModels.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "加载模型列表失败");
+        }
+    }
+
+    private async Task SaveChatModelAsync(ChatModelEdit item)
+    {
+        message = "";
+        try
+        {
+            var entity = await DbContext.ChatModels.FindAsync(item.ModelId, item.ProviderId);
+            if (entity is null) return;
+            entity.ModelName = item.ModelName;
+            entity.ModelEndpoint = new Uri(item.Endpoint);
+            await DbContext.SaveChangesAsync();
+            Logger.LogInformation("更新聊天模型 {Provider}:{Model}", item.ProviderId, item.ModelId);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "更新聊天模型失败");
+            message = $"保存失败: {ex.Message}";
+        }
+    }
+
+    private async Task DeleteChatModelAsync(ChatModelEdit item)
+    {
+        message = "";
+        try
+        {
+            var entity = await DbContext.ChatModels.FindAsync(item.ModelId, item.ProviderId);
+            if (entity is null) return;
+            DbContext.ChatModels.Remove(entity);
+            await DbContext.SaveChangesAsync();
+            Logger.LogInformation("删除聊天模型 {Provider}:{Model}", item.ProviderId, item.ModelId);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "删除聊天模型失败");
+            message = $"删除失败: {ex.Message}";
+        }
+    }
+
+    private async Task AddChatModelAsync()
+    {
+        message = "";
+        try
+        {
+            if (await DbContext.ChatModels.AnyAsync(m => m.ModelId == newChatModelId && m.ProviderId == newChatProviderId))
+            {
+                message = "该 (ModelId, ProviderId) 组合已存在。";
+                return;
+            }
+            DbContext.ChatModels.Add(new ChatModel
+            {
+                ModelId = newChatModelId,
+                ProviderId = newChatProviderId,
+                ModelName = newChatModelName,
+                ModelEndpoint = new Uri(newChatEndpoint)
+            });
+            await DbContext.SaveChangesAsync();
+            Logger.LogInformation("添加聊天模型 {Provider}:{Model}", newChatProviderId, newChatModelId);
+            newChatModelId = "";
+            newChatModelName = "";
+            newChatEndpoint = "";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "添加聊天模型失败");
+            message = $"添加失败: {ex.Message}";
+        }
+    }
+
+    private async Task SaveEmbeddingModelAsync(EmbeddingModelEdit item)
+    {
+        message = "";
+        try
+        {
+            var entity = await DbContext.EmbeddingModels.FindAsync(item.ModelId, item.ProviderId);
+            if (entity is null) return;
+            entity.ModelName = item.ModelName;
+            entity.ModelEndpoint = new Uri(item.Endpoint);
+            entity.Dimensions = int.Parse(item.Dimensions);
+            entity.IsFixedDimension = item.IsFixedDimension;
+            await DbContext.SaveChangesAsync();
+            Logger.LogInformation("更新嵌入模型 {Provider}:{Model}", item.ProviderId, item.ModelId);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "更新嵌入模型失败");
+            message = $"保存失败: {ex.Message}";
+        }
+    }
+
+    private async Task DeleteEmbeddingModelAsync(EmbeddingModelEdit item)
+    {
+        message = "";
+        try
+        {
+            var entity = await DbContext.EmbeddingModels.FindAsync(item.ModelId, item.ProviderId);
+            if (entity is null) return;
+            DbContext.EmbeddingModels.Remove(entity);
+            await DbContext.SaveChangesAsync();
+            Logger.LogInformation("删除嵌入模型 {Provider}:{Model}", item.ProviderId, item.ModelId);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "删除嵌入模型失败");
+            message = $"删除失败: {ex.Message}";
+        }
+    }
+
+    private async Task AddEmbeddingModelAsync()
+    {
+        message = "";
+        try
+        {
+            if (await DbContext.EmbeddingModels.AnyAsync(m => m.ModelId == newEmbModelId && m.ProviderId == newEmbProviderId))
+            {
+                message = "该 (ModelId, ProviderId) 组合已存在。";
+                return;
+            }
+            DbContext.EmbeddingModels.Add(new EmbeddingModel
+            {
+                ModelId = newEmbModelId,
+                ProviderId = newEmbProviderId,
+                ModelName = newEmbModelName,
+                ModelEndpoint = new Uri(newEmbEndpoint),
+                Dimensions = int.Parse(newEmbDimensions),
+                IsFixedDimension = true
+            });
+            await DbContext.SaveChangesAsync();
+            Logger.LogInformation("添加嵌入模型 {Provider}:{Model}", newEmbProviderId, newEmbModelId);
+            newEmbModelId = "";
+            newEmbModelName = "";
+            newEmbEndpoint = "";
+            newEmbDimensions = "";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "添加嵌入模型失败");
+            message = $"添加失败: {ex.Message}";
+        }
+    }
+}
