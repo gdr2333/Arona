@@ -32,7 +32,7 @@ var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
-    using var sqlsvr = scope.ServiceProvider.GetService<MainDbContext>();
+    using var sqlsvr = scope.ServiceProvider.GetRequiredService<MainDbContext>();
     if (args.Contains("--cleardb"))
         sqlsvr.Database.EnsureDeleted();
     sqlsvr.EnsureCreated();

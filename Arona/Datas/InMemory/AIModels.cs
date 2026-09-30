@@ -20,11 +20,13 @@ public class AIModels
         else
         {
             var chatModelSplited = chatModel.Value.Split(":");
-            var chatModelProv = dbContext.ApiProviders.Find(chatModelSplited[0]);
-            dbContext.Entry(chatModelProv!)
+            var chatModelProv = dbContext.ApiProviders.Find(chatModelSplited[0])
+                ?? throw new InvalidOperationException($"未找到 ApiProvider: {chatModelSplited[0]}");
+            dbContext.Entry(chatModelProv)
                 .Collection(cmp => cmp.ChatModels)
                 .Load();
-            var chatModelObj = chatModelProv.ChatModels.FirstOrDefault(cm => cm.ModelName == chatModelSplited[1]);
+            var chatModelObj = chatModelProv.ChatModels.FirstOrDefault(cm => cm.ModelName == chatModelSplited[1])
+                ?? throw new InvalidOperationException($"未找到 ChatModel: {chatModelSplited[1]}");
             ChatModel = new()
             {
                 Id = chatModel.Value,
@@ -39,11 +41,13 @@ public class AIModels
         else
         {
             var embeddingModelSplited = embeddingModel.Value.Split(":");
-            var embeddingModelProv = dbContext.ApiProviders.Find(embeddingModelSplited[0]);
-            dbContext.Entry(embeddingModelProv!)
+            var embeddingModelProv = dbContext.ApiProviders.Find(embeddingModelSplited[0])
+                ?? throw new InvalidOperationException($"未找到 ApiProvider: {embeddingModelSplited[0]}");
+            dbContext.Entry(embeddingModelProv)
                 .Collection(cmp => cmp.EmbeddingModels)
                 .Load();
-            var embeddingModelObj = embeddingModelProv.EmbeddingModels.FirstOrDefault(cm => cm.ModelName == embeddingModelSplited[1]);
+            var embeddingModelObj = embeddingModelProv.EmbeddingModels.FirstOrDefault(cm => cm.ModelName == embeddingModelSplited[1])
+                ?? throw new InvalidOperationException($"未找到 EmbeddingModel: {embeddingModelSplited[1]}");
             if (embeddingModelObj.Dimensions != embeddingDimensions)
                 throw new InvalidOperationException("模型的向量维度与配置的向量维度不匹配！");
             EmbeddingModel = new()
@@ -64,19 +68,23 @@ public class AIModels
         var chatModel = dbContext.Configs.Find("ChatModel");
         if (ChatModel is null && chatModel is not null)
             dbContext.Configs.Remove(chatModel);
-        else
+        else if (ChatModel is not null)
+        {
             if (chatModel is not null)
                 chatModel.Value = ChatModel.Id;
             else
                 dbContext.Configs.Add(new() { Id = "ChatModel", Value = ChatModel.Id });
+        }
         var embeddingModel = dbContext.Configs.Find("EmbeddingModel");
         if (EmbeddingModel is null && embeddingModel is not null)
             dbContext.Configs.Remove(embeddingModel);
-        else
+        else if (EmbeddingModel is not null)
+        {
             if (embeddingModel is not null)
                 embeddingModel.Value = EmbeddingModel.Id;
             else
                 dbContext.Configs.Add(new() { Id = "EmbeddingModel", Value = EmbeddingModel.Id });
+        }
         dbContext.SaveChanges();
     }
 

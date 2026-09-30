@@ -8,7 +8,7 @@ public class ChatSession
     // botid:private:userid
     // webui:sessionid
     [Key]
-    public string Id { get; set; }
+    public required string Id { get; set; }
     public ICollection<ChatMessage> Messages { get; } = [];
     public ICollection<Fact> Facts { get; } = [];
 }

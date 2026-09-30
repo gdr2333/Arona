@@ -5,7 +5,7 @@ namespace Arona.Datas.Storage;
 public class StringConfig
 {
     [Key]
-    public string Id { get; set; }
+    public required string Id { get; set; }
 
-    public string Value { get; set; }
+    public required string Value { get; set; }
 }

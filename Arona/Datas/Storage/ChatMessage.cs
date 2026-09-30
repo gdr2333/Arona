@@ -7,10 +7,10 @@ public class ChatMessage
 {
     [Key]
     public long Id { get; set; }
-    public string SessionId { get; set; }
-    public string Role { get; set; }
-    public ChatSession Session { get; set; }
-    public string Message { get; set; }
+    public required string SessionId { get; set; }
+    public required string Role { get; set; }
+    public ChatSession? Session { get; set; }
+    public required string Message { get; set; }
     public SqlVector<float> Embedding { get; set; }
     public DateTime UtcTime { get; set; }
 }

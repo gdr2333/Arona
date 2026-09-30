@@ -7,7 +7,7 @@ public class Fact
 {
     [Key]
     public long Id { get; set; }
-    public string Content { get; set; }
+    public required string Content { get; set; }
     public SqlVector<float> Embedding { get; set; }
     public DateTime UtcTime { get; set; }
     public ChatSession? Session { get; set; }

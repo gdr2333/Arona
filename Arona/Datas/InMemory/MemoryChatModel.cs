@@ -2,9 +2,9 @@
 
 public class MemoryChatModel
 {
-    public string Id { get; set; }
-    public string ModelId { get; set; }
-    public string Name { get; set; }
-    public Uri Endpoint { get; set; }
-    public string ApiKey { get; set; }
+    public required string Id { get; set; }
+    public required string ModelId { get; set; }
+    public required string Name { get; set; }
+    public required Uri Endpoint { get; set; }
+    public required string ApiKey { get; set; }
 }

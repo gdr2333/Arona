@@ -95,7 +95,7 @@ public class ArAgent : DelegatingAIAgent
 
     protected override async Task<AgentResponse> RunCoreAsync(
         IEnumerable<AiChatMessage> messages,
-        AgentSession session,
+        AgentSession? session,
         AgentRunOptions? options,
         CancellationToken cancellationToken)
     {
