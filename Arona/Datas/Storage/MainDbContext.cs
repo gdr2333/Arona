@@ -19,7 +19,8 @@ public class MainDbContext(DbContextOptions options, Config config) : DbContext(
         {
             Database.ExecuteSqlRaw(
                 $"CREATE FULLTEXT CATALOG ftCatalog AS DEFAULT;" +
-                $"CREATE FULLTEXT INDEX ON Facts(Content) KEY INDEX PK_Facts;");
+                $"CREATE FULLTEXT INDEX ON Facts(Content) KEY INDEX PK_Facts;" + 
+                $"CREATE FULLTEXT INDEX ON ChatMessages(Message) KEY INDEX PK_ChatMessages;");
         }
         return res;
     }
