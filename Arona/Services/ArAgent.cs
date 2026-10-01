@@ -138,6 +138,7 @@ public class ArAgent : DelegatingAIAgent
 
         now = DateTime.UtcNow;
         var assistantSaved = 0;
+        string? lastSavedSent = null;
         foreach (var msg in response.Messages)
         {
             foreach (var content in msg.Contents)
@@ -154,11 +155,13 @@ public class ArAgent : DelegatingAIAgent
                         && fc.Arguments.TryGetValue("message", out var m))
                     {
                         var sent = AgentTools.ExtractArgumentValue(m);
-                        if (!string.IsNullOrWhiteSpace(sent))
+                        if (!string.IsNullOrWhiteSpace(sent)
+                            && !string.Equals(lastSavedSent, sent, StringComparison.Ordinal))
                         {
                             var embedding = await ComputeEmbeddingAsync(sent!, cancellationToken);
                             _dbContext.ChatMessages.Add(CreateMessage("assistant", sent!, now, embedding));
                             assistantSaved++;
+                            lastSavedSent = sent;
                         }
                     }
                 }

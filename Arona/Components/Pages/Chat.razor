@@ -235,23 +235,16 @@
 
             var mainCount = 0;
             var debugCount = 0;
+            foreach (var sent in AgentTools.ExtractSendMessageContents(response.Messages))
+            {
+                DisplayMessages.Add(new DisplayMessage { Text = sent, IsUser = false, IsDebug = false });
+                mainCount++;
+            }
             foreach (var msg in response.Messages)
             {
                 foreach (var content in msg.Contents)
                 {
-                    if (content is FunctionCallContent fc
-                        && fc.Name == AgentTools.SendMessageToolName
-                        && fc.Arguments is not null
-                        && fc.Arguments.TryGetValue("message", out var m))
-                    {
-                        var sent = AgentTools.ExtractArgumentValue(m);
-                        if (!string.IsNullOrWhiteSpace(sent))
-                        {
-                            DisplayMessages.Add(new DisplayMessage { Text = sent!, IsUser = false, IsDebug = false });
-                            mainCount++;
-                        }
-                    }
-                    else if (content is TextContent tc && !string.IsNullOrWhiteSpace(tc.Text))
+                    if (content is TextContent tc && !string.IsNullOrWhiteSpace(tc.Text))
                     {
                         DisplayMessages.Add(new DisplayMessage { Text = tc.Text, IsUser = false, IsDebug = true });
                         debugCount++;

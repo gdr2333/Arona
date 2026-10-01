@@ -214,23 +214,8 @@ public sealed class OnebotService : IHostedService
             var agent = agentService.GetAgent(sessionId, scenario);
             var response = await agent.RunAsync(text);
 
-            var sb = new StringBuilder();
-            foreach (var msg in response.Messages)
-            {
-                foreach (var content in msg.Contents)
-                {
-                    if (content is FunctionCallContent fc
-                        && fc.Name == AgentTools.SendMessageToolName
-                        && fc.Arguments is not null
-                        && fc.Arguments.TryGetValue("message", out var m))
-                    {
-                        var sent = AgentTools.ExtractArgumentValue(m);
-                        if (!string.IsNullOrWhiteSpace(sent))
-                            sb.AppendLine(sent);
-                    }
-                }
-            }
-            return sb.Length == 0 ? null : sb.ToString().TrimEnd();
+            var contents = AgentTools.ExtractSendMessageContents(response.Messages);
+            return contents.Count == 0 ? null : string.Join('\n', contents);
         }
         finally
         {
