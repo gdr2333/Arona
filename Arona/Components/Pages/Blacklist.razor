@@ -8,12 +8,14 @@
 <PageTitle>群黑名单 - Arona</PageTitle>
 
 <div class="config-page">
-    <h2>群黑名单管理</h2>
-    <p class="config-hint">黑名单中的群将不处理任何消息。黑名单外的群，Bot 会收到所有消息并自主决定是否回复。</p>
+    <PageHeader Title="群黑名单管理" Description="黑名单中的群将不处理任何消息。黑名单外的群，Bot 会收到所有消息并自主决定是否回复。" />
 
     @if (groups.Count == 0)
     {
-        <p class="config-message">当前黑名单为空。</p>
+        <div class="empty-state">
+            <div class="empty-state-icon">🚫</div>
+            <p>当前黑名单为空</p>
+        </div>
     }
     else
     {
@@ -39,22 +41,14 @@
         </table>
     }
 
-    <div class="config-add">
-        <h3>添加群到黑名单</h3>
-        <div class="config-add-form">
-            <label>群 ID</label>
-            <FluentTextInput @bind-Value="newGroupId" Placeholder="要拉黑的群号" />
-            <FluentButton OnClick="AddAsync" Appearance="ButtonAppearance.Primary" Disabled="!CanParseId">添加</FluentButton>
-        </div>
-        @if (!string.IsNullOrEmpty(message))
-        {
-            <p class="config-message">@message</p>
-        }
-    </div>
+    <AddFormCard Title="添加群到黑名单" Message="@message">
+        <label>群 ID</label>
+        <FluentTextInput @bind-Value="newGroupId" Placeholder="要拉黑的群号" />
+        <FluentButton OnClick="AddAsync" Appearance="ButtonAppearance.Primary" Disabled="!CanParseId">添加</FluentButton>
+    </AddFormCard>
 </div>
 
-@code
-{
+@code {
     private List<long> groups = [];
     private string newGroupId = "";
     private string message = "";

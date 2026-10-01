@@ -1,0 +1,31 @@
+@if (IsUser)
+{
+    <div class="chat-msg msg-user">
+        <div class="msg-bubble">@Text</div>
+    </div>
+}
+else if (IsDebug)
+{
+    @if (ShowDebug)
+    {
+        <div class="chat-msg msg-debug">
+            <details>
+                <summary>排障 / 推理</summary>
+                <pre class="debug-text">@Text</pre>
+            </details>
+        </div>
+    }
+}
+else
+{
+    <div class="chat-msg msg-agent">
+        <div class="msg-bubble">@Text</div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Text { get; set; } = "";
+    [Parameter] public bool IsUser { get; set; }
+    [Parameter] public bool IsDebug { get; set; }
+    [Parameter] public bool ShowDebug { get; set; }
+}

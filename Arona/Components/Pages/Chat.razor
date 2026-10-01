@@ -13,8 +13,11 @@
 <PageTitle>对话 - Arona</PageTitle>
 
 <div class="chat-layout">
-    <div class="chat-sidebar">
-        <FluentButton OnClick="NewSessionAsync" Appearance="ButtonAppearance.Primary" Style="width:100%;margin-bottom:.5rem;">+ 新建会话</FluentButton>
+    <aside class="chat-sidebar @(isSidebarOpen ? "mobile-open" : "")">
+        <div class="chat-sidebar-head">
+            <span class="chat-sidebar-title">会话</span>
+            <FluentButton OnClick="NewSessionAsync" Appearance="ButtonAppearance.Primary">+ 新建</FluentButton>
+        </div>
         @foreach (var s in SessionList)
         {
             var current = s;
@@ -24,66 +27,42 @@
                 <span class="session-time">@current.LastTime.ToString("MM-dd HH:mm")</span>
             </div>
         }
-    </div>
+    </aside>
+    @if (isSidebarOpen)
+    {
+        <div class="sidebar-backdrop" @onclick="() => isSidebarOpen = false"></div>
+    }
 
     <div class="chat-container">
         <div class="chat-header">
-            <h2>Arona 对话</h2>
-            <label class="debug-toggle"><input type="checkbox" @bind="showDebug" /> 显示排障信息</label>
+            <div class="chat-title-group">
+                <button class="chat-sessions-btn" @onclick="() => isSidebarOpen = !isSidebarOpen" aria-label="会话列表">☰</button>
+                <h2>Arona 对话</h2>
+            </div>
+            <label class="debug-toggle"><input type="checkbox" @bind="showDebug" /> 显示排障</label>
         </div>
 
         <div class="chat-messages" id="chat-scroll">
             @foreach (var msg in DisplayMessages)
             {
-                if (msg.IsUser)
-                {
-                    <div class="chat-msg msg-user">
-                        <div class="msg-bubble">@msg.Text</div>
-                    </div>
-                }
-                else if (msg.IsDebug)
-                {
-                    if (showDebug)
-                    {
-                        <div class="chat-msg msg-debug">
-                            <details>
-                                <summary>排障 / 推理</summary>
-                                <pre class="debug-text">@msg.Text</pre>
-                            </details>
-                        </div>
-                    }
-                }
-                else
-                {
-                    <div class="chat-msg msg-agent">
-                        <div class="msg-bubble">@msg.Text</div>
-                    </div>
-                }
+                <ChatMessageBubble Text="@msg.Text" IsUser="@msg.IsUser" IsDebug="@msg.IsDebug" ShowDebug="@showDebug" />
             }
             @if (isSending)
             {
                 <div class="chat-msg msg-agent">
-                    <div class="msg-bubble msg-typing">思考中…</div>
+                    <div class="msg-bubble msg-typing">思考中</div>
                 </div>
             }
         </div>
 
-        <div class="chat-input">
-            <FluentTextInput @bind-Value="inputText"
-                             Placeholder="输入消息…"
-                             @onkeydown="OnKeyDown"
-                             Disabled="isSending"
-                             Style="flex:1;" />
-            <FluentButton OnClick="SendAsync" Disabled="isSending || string.IsNullOrWhiteSpace(inputText)">发送</FluentButton>
-        </div>
+        <ChatInputBar IsSending="@isSending" OnSend="HandleSendAsync" />
     </div>
 </div>
 
-@code
-{
-    private string inputText = "";
+@code {
     private bool isSending;
     private bool showDebug;
+    private bool isSidebarOpen;
     private string sessionId = "";
     private readonly List<DisplayMessage> DisplayMessages = [];
     private readonly List<SessionItem> SessionList = [];
@@ -157,6 +136,7 @@
     {
         sessionId = "webui:" + Guid.NewGuid().ToString("N");
         DisplayMessages.Clear();
+        isSidebarOpen = false;
         Logger.LogInformation("新建会话 {Session}", sessionId);
 
         try
@@ -177,10 +157,14 @@
     private async Task SwitchSessionAsync(string id)
     {
         if (id == sessionId && DisplayMessages.Count > 0)
+        {
+            isSidebarOpen = false;
             return;
+        }
 
         sessionId = id;
         DisplayMessages.Clear();
+        isSidebarOpen = false;
         Logger.LogInformation("切换到会话 {Session}", sessionId);
 
         try
@@ -208,23 +192,12 @@
         }
     }
 
-    private async Task OnKeyDown(KeyboardEventArgs e)
+    private async Task HandleSendAsync(string text)
     {
-        if (e.Key == "Enter" && !e.ShiftKey)
-        {
-            await SendAsync();
-        }
-    }
-
-    private async Task SendAsync()
-    {
-        if (string.IsNullOrWhiteSpace(inputText) || isSending)
+        if (string.IsNullOrWhiteSpace(text) || isSending)
             return;
 
-        var text = inputText.Trim();
-        inputText = "";
         isSending = true;
-
         DisplayMessages.Add(new DisplayMessage { Text = text, IsUser = true });
         Logger.LogInformation("会话 {Session}：发送消息 ({Length} 字符)", sessionId, text.Length);
 

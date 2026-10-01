@@ -9,7 +9,7 @@
 <PageTitle>模型管理 - Arona</PageTitle>
 
 <div class="config-page">
-    <h2>模型管理</h2>
+    <PageHeader Title="模型管理" />
 
     <h3>聊天模型</h3>
     <p class="config-hint">复合主键：(ModelId, ProviderId)。Endpoint 为模型 API 地址。</p>
@@ -40,25 +40,23 @@
             }
         </tbody>
     </table>
-    <div class="config-add">
-        <div class="config-add-form">
-            <label>供应商</label>
-            <select @bind="newChatProviderId" class="config-select">
-                <option value="">— 选择供应商 —</option>
-                @foreach (var p in providerOptions)
-                {
-                    <option value="@p">@p</option>
-                }
-            </select>
-            <label>ModelId</label>
-            <FluentTextInput @bind-Value="newChatModelId" Placeholder="模型唯一标识" />
-            <label>ModelName</label>
-            <FluentTextInput @bind-Value="newChatModelName" />
-            <label>Endpoint</label>
-            <FluentTextInput @bind-Value="newChatEndpoint" Placeholder="https://..." />
-            <FluentButton OnClick="AddChatModelAsync" Appearance="ButtonAppearance.Primary" Disabled="string.IsNullOrWhiteSpace(newChatProviderId) || string.IsNullOrWhiteSpace(newChatModelId)">添加</FluentButton>
-        </div>
-    </div>
+    <AddFormCard Message="@message">
+        <label>供应商</label>
+        <select @bind="newChatProviderId" class="config-select">
+            <option value="">— 选择供应商 —</option>
+            @foreach (var p in providerOptions)
+            {
+                <option value="@p">@p</option>
+            }
+        </select>
+        <label>ModelId</label>
+        <FluentTextInput @bind-Value="newChatModelId" Placeholder="模型唯一标识" />
+        <label>ModelName</label>
+        <FluentTextInput @bind-Value="newChatModelName" />
+        <label>Endpoint</label>
+        <FluentTextInput @bind-Value="newChatEndpoint" Placeholder="https://..." />
+        <FluentButton OnClick="AddChatModelAsync" Appearance="ButtonAppearance.Primary" Disabled="string.IsNullOrWhiteSpace(newChatProviderId) || string.IsNullOrWhiteSpace(newChatModelId)">添加</FluentButton>
+    </AddFormCard>
 
     <h3>嵌入模型</h3>
     <p class="config-hint">复合主键：(ModelId, ProviderId)。Dimensions 需与数据库配置的向量维度一致。</p>
@@ -93,36 +91,28 @@
             }
         </tbody>
     </table>
-    <div class="config-add">
-        <div class="config-add-form">
-            <label>供应商</label>
-            <select @bind="newEmbProviderId" class="config-select">
-                <option value="">— 选择供应商 —</option>
-                @foreach (var p in providerOptions)
-                {
-                    <option value="@p">@p</option>
-                }
-            </select>
-            <label>ModelId</label>
-            <FluentTextInput @bind-Value="newEmbModelId" Placeholder="模型唯一标识" />
-            <label>ModelName</label>
-            <FluentTextInput @bind-Value="newEmbModelName" />
-            <label>Endpoint</label>
-            <FluentTextInput @bind-Value="newEmbEndpoint" Placeholder="https://..." />
-            <label>维度</label>
-            <FluentTextInput @bind-Value="newEmbDimensions" Placeholder="如 1536" />
-            <FluentButton OnClick="AddEmbeddingModelAsync" Appearance="ButtonAppearance.Primary" Disabled="string.IsNullOrWhiteSpace(newEmbProviderId) || string.IsNullOrWhiteSpace(newEmbModelId)">添加</FluentButton>
-        </div>
-    </div>
-
-    @if (!string.IsNullOrEmpty(message))
-    {
-        <p class="config-message">@message</p>
-    }
+    <AddFormCard Message="@message">
+        <label>供应商</label>
+        <select @bind="newEmbProviderId" class="config-select">
+            <option value="">— 选择供应商 —</option>
+            @foreach (var p in providerOptions)
+            {
+                <option value="@p">@p</option>
+            }
+        </select>
+        <label>ModelId</label>
+        <FluentTextInput @bind-Value="newEmbModelId" Placeholder="模型唯一标识" />
+        <label>ModelName</label>
+        <FluentTextInput @bind-Value="newEmbModelName" />
+        <label>Endpoint</label>
+        <FluentTextInput @bind-Value="newEmbEndpoint" Placeholder="https://..." />
+        <label>维度</label>
+        <FluentTextInput @bind-Value="newEmbDimensions" Placeholder="如 1536" />
+        <FluentButton OnClick="AddEmbeddingModelAsync" Appearance="ButtonAppearance.Primary" Disabled="string.IsNullOrWhiteSpace(newEmbProviderId) || string.IsNullOrWhiteSpace(newEmbModelId)">添加</FluentButton>
+    </AddFormCard>
 </div>
 
-@code
-{
+@code {
     private List<string> providerOptions = [];
     private List<ChatModelEdit> chatModels = [];
     private List<EmbeddingModelEdit> embeddingModels = [];

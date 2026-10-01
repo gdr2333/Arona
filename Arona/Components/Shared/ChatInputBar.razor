@@ -1,0 +1,29 @@
+<div class="chat-input">
+    <FluentTextInput @bind-Value="text"
+                     Placeholder="输入消息…  (Enter 发送)"
+                     @onkeydown="OnKeyDown"
+                     Disabled="IsSending"
+                     Style="flex:1;" />
+    <FluentButton OnClick="Send" Disabled="IsSending || string.IsNullOrWhiteSpace(text)" Appearance="ButtonAppearance.Primary">发送</FluentButton>
+</div>
+
+@code {
+    [Parameter] public bool IsSending { get; set; }
+    [Parameter] public EventCallback<string> OnSend { get; set; }
+
+    private string text = "";
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+            await Send();
+    }
+
+    private async Task Send()
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        var t = text.Trim();
+        text = "";
+        await OnSend.InvokeAsync(t);
+    }
+}

@@ -1,0 +1,19 @@
+<div class="config-add">
+    @if (!string.IsNullOrEmpty(Title))
+    {
+        <h3>@Title</h3>
+    }
+    <div class="config-add-form">
+        @ChildContent
+    </div>
+    @if (!string.IsNullOrEmpty(Message))
+    {
+        <p class="config-message">@Message</p>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Message { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

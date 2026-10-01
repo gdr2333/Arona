@@ -1,17 +1,41 @@
 ﻿@inherits LayoutComponentBase
 
 <div class="app-shell">
-    <nav class="app-nav">
-        <a href="/" class="nav-brand">Arona</a>
-        <div class="nav-links">
-            <a href="/chat" class="nav-link">对话</a>
-            <a href="/config" class="nav-link">配置</a>
-            <a href="/providers" class="nav-link">供应商</a>
-            <a href="/models" class="nav-link">模型</a>
-            <a href="/blacklist" class="nav-link">黑名单</a>
+    <aside class="app-sidebar @(isCollapsed ? "collapsed" : "") @(isMobileOpen ? "mobile-open" : "")">
+        <div class="sidebar-header">
+            <a href="/" class="sidebar-brand">
+                <span class="brand-mark">A</span>
+                <span class="brand-text">Arona</span>
+            </a>
+            <button class="sidebar-toggle" @onclick="ToggleCollapse" aria-label="折叠导航">
+                @(isCollapsed ? "»" : "«")
+            </button>
         </div>
-    </nav>
+        <nav class="sidebar-nav">
+            <NavLink href="/chat" class="nav-item" Match="NavLinkMatch.All">
+                <span class="nav-icon">💬</span><span class="nav-label">对话</span>
+            </NavLink>
+            <NavLink href="/config" class="nav-item" Match="NavLinkMatch.All">
+                <span class="nav-icon">⚙️</span><span class="nav-label">配置</span>
+            </NavLink>
+            <NavLink href="/providers" class="nav-item" Match="NavLinkMatch.All">
+                <span class="nav-icon">🔌</span><span class="nav-label">供应商</span>
+            </NavLink>
+            <NavLink href="/models" class="nav-item" Match="NavLinkMatch.All">
+                <span class="nav-icon">🤖</span><span class="nav-label">模型</span>
+            </NavLink>
+            <NavLink href="/blacklist" class="nav-item" Match="NavLinkMatch.All">
+                <span class="nav-icon">🚫</span><span class="nav-label">黑名单</span>
+            </NavLink>
+        </nav>
+        <div class="sidebar-foot">Arona · AI Agent</div>
+    </aside>
+    @if (isMobileOpen)
+    {
+        <div class="sidebar-backdrop" @onclick="CloseMobile"></div>
+    }
     <main class="app-main">
+        <button class="mobile-menu-btn" @onclick="ToggleMobile" aria-label="菜单">☰</button>
         @Body
     </main>
 </div>
@@ -23,3 +47,12 @@
 </div>
 
 <FluentProviders />
+
+@code {
+    private bool isCollapsed;
+    private bool isMobileOpen;
+
+    private void ToggleCollapse() => isCollapsed = !isCollapsed;
+    private void ToggleMobile() => isMobileOpen = !isMobileOpen;
+    private void CloseMobile() => isMobileOpen = false;
+}

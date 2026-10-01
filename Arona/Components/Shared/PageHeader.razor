@@ -1,0 +1,12 @@
+<div class="page-header">
+    <h2>@Title</h2>
+    @if (!string.IsNullOrEmpty(Description))
+    {
+        <p class="config-hint">@Description</p>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Description { get; set; }
+}
