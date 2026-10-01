@@ -17,6 +17,8 @@ builder.Services.AddScoped<AIModels>();
 
 builder.Services.AddScoped<AgentService>();
 
+builder.Services.AddScoped<EmbeddingService>();
+
 builder.Services.AddSingleton<GroupBlacklistService>();
 builder.Services.AddHostedService<OnebotService>();
 
