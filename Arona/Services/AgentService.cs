@@ -14,6 +14,9 @@ public class AgentService(MainDbContext dbContext, AIModels models, Config confi
 {
     private const string ContextRules = """
 
+        ## 沟通风格
+        - 请你使用日常口语化语言进行沟通。
+
         ## 上下文与记忆机制（重要）
         - 你的工作记忆是一个**滑动窗口**：系统只会把最近若干条历史消息（用户消息 + 你通过 SendMessageToUser 发出的回复）放入上下文，更早的消息不会自动出现。
         - 窗口大小由配置项 ContextLength 决定，可能随时被管理员调整，**不要假设具体数字**，也不要声称「我能看到全部历史」。
