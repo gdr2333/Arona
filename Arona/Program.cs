@@ -26,9 +26,11 @@ builder.Services.AddHostedService<OnebotService>();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-builder.Services.AddFluentUIComponents();
-
-
+builder.Services.AddFluentUIComponents(config =>
+{
+    config.Toast.AllowDismiss = true;
+    config.Toast.Position = ToastPosition.TopEnd;
+});
 
 var app = builder.Build();
 

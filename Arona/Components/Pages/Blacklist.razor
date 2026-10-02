@@ -1,64 +1,67 @@
-@page "/blacklist"
+﻿@page "/BlackList"
+
 @rendermode InteractiveServer
+
 @using Arona.Services
 @using Microsoft.Extensions.Logging
 @inject GroupBlacklistService BlacklistService
-@inject ILogger<Blacklist> Logger
+@inject ILogger<BlackList> Logger
+@inject INotificationService NotificationService
 
-<PageTitle>群黑名单 - Arona</PageTitle>
+<PageTitle>黑名单管理</PageTitle>
 
-<div class="config-page">
-    <PageHeader Title="群黑名单管理" Description="黑名单中的群将不处理任何消息。黑名单外的群，Bot 会收到所有消息并自主决定是否回复。" />
+<FluentProviders />
 
-    @if (groups.Count == 0)
-    {
-        <div class="empty-state">
-            <div class="empty-state-icon">🚫</div>
-            <p>当前黑名单为空</p>
-        </div>
-    }
-    else
-    {
-        <table class="config-table">
-            <thead>
-                <tr>
-                    <th>群 ID</th>
-                    <th>操作</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var gid in groups)
-                {
-                    var current = gid;
-                    <tr>
-                        <td class="config-key">@current</td>
-                        <td class="config-actions">
-                            <FluentButton OnClick="() => RemoveAsync(current)" Appearance="ButtonAppearance.Outline">移除</FluentButton>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    }
+<FluentStack Orientation="Orientation.Vertical">
+    <h1>黑名单管理</h1>
+    <p>黑名单内的群接收到的消息将被忽略</p>
+    <FluentStack Orientation="Orientation.Horizontal">
+        <FluentTextInput TextInputType="TextInputType.Number" Label="要拉黑的群号" @bind-Value="bannedGroupId"/>
+        <FluentButton OnClick="AddAsync">添加到黑名单</FluentButton>
+    </FluentStack>
+    <FluentDataGrid 
+        GenerateHeader="DataGridGeneratedHeaderType.None"
+        DisplayMode="DataGridDisplayMode.Table"
+        TGridItem="string"
+        role="grid">
+        <FluentDataGridRow RowType="DataGridRowType.Header">
+            <FluentDataGridCell 
+                GridColumn="1" 
+                CellType="DataGridCellType.ColumnHeader">
+                群号
+            </FluentDataGridCell>
+            <FluentDataGridCell 
+                GridColumn="2" 
+                CellType="DataGridCellType.ColumnHeader">
+                操作
+            </FluentDataGridCell>
+        </FluentDataGridRow>
+        @foreach(var i in groups)
+        {
+            <FluentDataGridRow>
+                <FluentDataGridCell GridColumn="1">
+                    @i
+                </FluentDataGridCell>
+                <FluentDataGridCell GridColumn="2">
+                    <FluentButton OnClick="@(async e => await RemoveAsync(i))">
+                        删除
+                    </FluentButton>
+                </FluentDataGridCell>
+            </FluentDataGridRow>
+        }
+    </FluentDataGrid>
+</FluentStack>
 
-    <AddFormCard Title="添加群到黑名单" Message="@message">
-        <label>群 ID</label>
-        <FluentTextInput @bind-Value="newGroupId" Placeholder="要拉黑的群号" />
-        <FluentButton OnClick="AddAsync" Appearance="ButtonAppearance.Primary" Disabled="!CanParseId">添加</FluentButton>
-    </AddFormCard>
-</div>
-
-@code {
+@code
+{
+    public string bannedGroupId { get; set; } = "";
     private List<long> groups = [];
-    private string newGroupId = "";
-    private string message = "";
-
-    private bool CanParseId => long.TryParse(newGroupId.Trim(), out var id) && id > 0;
 
     protected override void OnInitialized()
     {
         Logger.LogInformation("初始化群黑名单管理页面");
         Reload();
+        base.OnInitialized();
     }
 
     private void Reload()
@@ -69,28 +72,26 @@
 
     private async Task AddAsync()
     {
-        message = "";
-        if (!long.TryParse(newGroupId.Trim(), out var id) || id <= 0)
+        if (!long.TryParse(bannedGroupId.Trim(), out var id) || id <= 0)
         {
-            message = "请输入有效的群 ID（正整数）。";
+            await NotificationService.ShowErrorToastAsync("请输入有效的群 ID（正整数）。");
             return;
         }
         var added = await BlacklistService.AddAsync(id);
         if (added)
         {
-            Logger.LogInformation("添加群 {GroupId} 到黑名单", id);
-            newGroupId = "";
+            await NotificationService.ShowInfoToastAsync($"添加群 {id} 到黑名单");
+            bannedGroupId = "";
         }
         else
         {
-            message = $"群 {id} 已在黑名单中。";
+            await NotificationService.ShowErrorToastAsync($"群 {id} 已在黑名单中。");
         }
         Reload();
     }
 
     private async Task RemoveAsync(long id)
     {
-        message = "";
         await BlacklistService.RemoveAsync(id);
         Logger.LogInformation("从黑名单移除群 {GroupId}", id);
         Reload();

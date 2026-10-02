@@ -1,241 +1,164 @@
-@page "/chat"
-@rendermode InteractiveServer
+@page "/Chat"
 @using Arona.Datas.Storage
 @using Arona.Services
-@using Microsoft.Agents.AI
-@using Microsoft.Extensions.AI
-@using Microsoft.Extensions.Logging
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.Extensions.Logging
+
+@rendermode InteractiveServer
+
 @inject AgentService AgentService
 @inject MainDbContext DbContext
+@inject INotificationService NotificationService
 @inject ILogger<Chat> Logger
 
-<PageTitle>对话 - Arona</PageTitle>
+<PageTitle>聊天</PageTitle>
+
+<FluentProviders />
 
 <div class="chat-layout">
-    <aside class="chat-sidebar @(isSidebarOpen ? "mobile-open" : "")">
+    <div class="chat-sidebar">
         <div class="chat-sidebar-head">
             <span class="chat-sidebar-title">会话</span>
-            <FluentButton OnClick="NewSessionAsync" Appearance="ButtonAppearance.Primary">+ 新建</FluentButton>
+            <FluentButton OnClick="NewSessionAsync" Appearance="ButtonAppearance.Subtle">+ 新建</FluentButton>
         </div>
-        @foreach (var s in SessionList)
+        @foreach (var s in sessions)
         {
-            var current = s;
-            <div class="session-item @(current.Id == sessionId ? "active" : "")"
-                 @onclick="() => SwitchSessionAsync(current.Id)">
-                <span class="session-name">@current.DisplayName</span>
-                <span class="session-time">@current.LastTime.ToString("MM-dd HH:mm")</span>
+            <div class="session-item @(s.Id == currentSessionId ? "active" : "")" @onclick="() => SelectSessionAsync(s.Id)">
+                <span class="session-name">@GetDisplayName(s.Id)</span>
+                <span class="session-time">@(s.LastTime == DateTime.MinValue ? "空" : s.LastTime.ToLocalTime().ToString("MM-dd HH:mm"))</span>
             </div>
         }
-    </aside>
-    @if (isSidebarOpen)
-    {
-        <div class="sidebar-backdrop" @onclick="() => isSidebarOpen = false"></div>
-    }
+        @if (sessions.Count == 0)
+        {
+            <p class="empty-inline">暂无会话</p>
+        }
+    </div>
 
     <div class="chat-container">
         <div class="chat-header">
             <div class="chat-title-group">
-                <button class="chat-sessions-btn" @onclick="() => isSidebarOpen = !isSidebarOpen" aria-label="会话列表">☰</button>
-                <h2>Arona 对话</h2>
+                <h2>@(currentSessionId is null ? "未选择会话" : GetDisplayName(currentSessionId))</h2>
             </div>
-            <label class="debug-toggle"><input type="checkbox" @bind="showDebug" /> 显示排障</label>
         </div>
 
-        <div class="chat-messages" id="chat-scroll">
-            @foreach (var msg in DisplayMessages)
+        <div class="chat-messages">
+            @if (currentSessionId is null)
             {
-                <ChatMessageBubble Text="@msg.Text" IsUser="@msg.IsUser" IsDebug="@msg.IsDebug" ShowDebug="@showDebug" />
-            }
-            @if (isSending)
-            {
-                <div class="chat-msg msg-agent">
-                    <div class="msg-bubble msg-typing">思考中</div>
+                <div class="empty-state">
+                    <div class="empty-state-icon">💬</div>
+                    <p>点击左侧「+ 新建」开始对话</p>
                 </div>
             }
+            else
+            {
+                @foreach (var m in messages)
+                {
+                    <ChatMessageBubble Text="@m.Text" IsUser="@(m.Role == "user")" />
+                }
+                @if (isSending)
+                {
+                    <div class="chat-msg msg-agent">
+                        <div class="msg-bubble msg-typing">正在思考…</div>
+                    </div>
+                }
+            }
         </div>
 
-        <ChatInputBar IsSending="@isSending" OnSend="HandleSendAsync" />
+        <ChatInputBar IsSending="isSending" OnSend="SendAsync" />
     </div>
 </div>
 
-@code {
+@code
+{
+    private List<SessionListItem> sessions = [];
+    private string? currentSessionId;
+    private List<Msg> messages = [];
     private bool isSending;
-    private bool showDebug;
-    private bool isSidebarOpen;
-    private string sessionId = "";
-    private readonly List<DisplayMessage> DisplayMessages = [];
-    private readonly List<SessionItem> SessionList = [];
 
-    private sealed class DisplayMessage
+    private class SessionListItem
     {
-        public required string Text { get; set; }
-        public bool IsUser { get; set; }
-        public bool IsDebug { get; set; }
-    }
-
-    private sealed class SessionItem
-    {
-        public required string Id { get; set; }
-        public required string DisplayName { get; set; }
+        public string Id { get; set; } = "";
         public DateTime LastTime { get; set; }
     }
 
+    private record Msg(string Role, string Text);
+
     protected override async Task OnInitializedAsync()
     {
-        Logger.LogInformation("初始化对话页面");
-        await LoadSessionListAsync();
-        if (SessionList.Count > 0)
-        {
-            await SwitchSessionAsync(SessionList[0].Id);
-        }
-        else
-        {
-            await NewSessionAsync();
-        }
+        await LoadSessionsAsync();
+        if (sessions.Count > 0)
+            await SelectSessionAsync(sessions[0].Id);
     }
 
-    private async Task LoadSessionListAsync()
+    private static string GetDisplayName(string id) =>
+        id.StartsWith("webui:") && id.Length > 14 ? "webui:" + id[6..14] : id;
+
+    private async Task LoadSessionsAsync()
     {
-        try
-        {
-            var sessionIds = await DbContext.ChatSessions
-                .Where(s => s.Id.StartsWith("webui:"))
-                .Select(s => s.Id)
-                .ToListAsync();
-
-            var lastTimes = await DbContext.ChatMessages
-                .Where(m => sessionIds.Contains(m.SessionId))
-                .GroupBy(m => m.SessionId)
-                .Select(g => new { SessionId = g.Key, LastTime = g.Max(m => m.UtcTime) })
-                .ToListAsync();
-
-            var lastTimeMap = lastTimes.ToDictionary(x => x.SessionId, x => x.LastTime);
-
-            SessionList.Clear();
-            foreach (var id in sessionIds)
+        sessions = await DbContext.ChatSessions
+            .Where(s => s.Id.StartsWith("webui:"))
+            .Select(s => new SessionListItem
             {
-                var last = lastTimeMap.TryGetValue(id, out var t) ? t : DateTime.UtcNow;
-                SessionList.Add(new SessionItem
-                {
-                    Id = id,
-                    DisplayName = id["webui:".Length..Math.Min(id.Length, "webui:".Length + 8)],
-                    LastTime = last
-                });
-            }
-            SessionList.Sort((a, b) => b.LastTime.CompareTo(a.LastTime));
-            Logger.LogDebug("加载会话列表：{Count} 个会话", SessionList.Count);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "加载会话列表失败");
-        }
+                Id = s.Id,
+                LastTime = s.Messages.Any() ? s.Messages.Max(m => m.UtcTime) : DateTime.MinValue
+            })
+            .OrderByDescending(s => s.LastTime)
+            .AsNoTracking()
+            .ToListAsync();
     }
 
     private async Task NewSessionAsync()
     {
-        sessionId = "webui:" + Guid.NewGuid().ToString("N");
-        DisplayMessages.Clear();
-        isSidebarOpen = false;
-        Logger.LogInformation("新建会话 {Session}", sessionId);
-
-        try
-        {
-            if (!await DbContext.ChatSessions.AnyAsync(s => s.Id == sessionId))
-            {
-                DbContext.ChatSessions.Add(new ChatSession { Id = sessionId });
-                await DbContext.SaveChangesAsync();
-            }
-            await LoadSessionListAsync();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "新建会话 {Session} 持久化失败", sessionId);
-        }
+        currentSessionId = $"webui:{Guid.NewGuid()}";
+        DbContext.ChatSessions.Add(new ChatSession { Id = currentSessionId });
+        await DbContext.SaveChangesAsync();
+        messages = [];
+        await LoadSessionsAsync();
     }
 
-    private async Task SwitchSessionAsync(string id)
+    private async Task SelectSessionAsync(string sessionId)
     {
-        if (id == sessionId && DisplayMessages.Count > 0)
-        {
-            isSidebarOpen = false;
-            return;
-        }
-
-        sessionId = id;
-        DisplayMessages.Clear();
-        isSidebarOpen = false;
-        Logger.LogInformation("切换到会话 {Session}", sessionId);
-
-        try
-        {
-            var history = await DbContext.ChatMessages
-                .Where(m => m.SessionId == sessionId)
-                .OrderBy(m => m.UtcTime)
-                .Select(m => new { m.Role, m.Message })
-                .ToListAsync();
-
-            foreach (var m in history)
-            {
-                DisplayMessages.Add(new DisplayMessage
-                {
-                    Text = m.Message,
-                    IsUser = m.Role == "user",
-                    IsDebug = false
-                });
-            }
-            Logger.LogDebug("会话 {Session}：加载 {Count} 条历史消息", sessionId, history.Count);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "加载会话 {Session} 历史失败", sessionId);
-        }
+        currentSessionId = sessionId;
+        messages = await DbContext.ChatMessages
+            .Where(m => m.SessionId == sessionId)
+            .OrderBy(m => m.UtcTime)
+            .Select(m => new Msg(m.Role, m.Message))
+            .AsNoTracking()
+            .ToListAsync();
     }
 
-    private async Task HandleSendAsync(string text)
+    private async Task SendAsync(string text)
     {
-        if (string.IsNullOrWhiteSpace(text) || isSending)
-            return;
+        if (string.IsNullOrWhiteSpace(text)) return;
+        if (currentSessionId is null)
+            await NewSessionAsync();
 
+        var sessionId = currentSessionId!;
+        messages.Add(new Msg("user", text));
         isSending = true;
-        DisplayMessages.Add(new DisplayMessage { Text = text, IsUser = true });
-        Logger.LogInformation("会话 {Session}：发送消息 ({Length} 字符)", sessionId, text.Length);
+        StateHasChanged();
 
         try
         {
             var agent = AgentService.GetAgent(sessionId, ChatScenario.WebUI);
             var response = await agent.RunAsync(text);
-
-            var mainCount = 0;
-            var debugCount = 0;
-            foreach (var sent in AgentTools.ExtractSendMessageContents(response.Messages))
-            {
-                DisplayMessages.Add(new DisplayMessage { Text = sent, IsUser = false, IsDebug = false });
-                mainCount++;
-            }
-            foreach (var msg in response.Messages)
-            {
-                foreach (var content in msg.Contents)
-                {
-                    if (content is TextContent tc && !string.IsNullOrWhiteSpace(tc.Text))
-                    {
-                        DisplayMessages.Add(new DisplayMessage { Text = tc.Text, IsUser = false, IsDebug = true });
-                        debugCount++;
-                    }
-                }
-            }
-            Logger.LogDebug("会话 {Session}：响应解析完成，主消息 {Main} 条，排障 {Debug} 条", sessionId, mainCount, debugCount);
-
-            await LoadSessionListAsync();
+            var contents = AgentTools.ExtractSendMessageContents(response.Messages);
+            if (contents.Count == 0)
+                messages.Add(new Msg("assistant", "（Agent 未回复）"));
+            else
+                foreach (var c in contents)
+                    messages.Add(new Msg("assistant", c));
+            await LoadSessionsAsync();
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "会话 {Session}：发送消息时出错", sessionId);
-            DisplayMessages.Add(new DisplayMessage { Text = $"错误: {ex.Message}", IsUser = false, IsDebug = true });
+            Logger.LogError(ex, "发送消息失败");
+            await NotificationService.ShowErrorToastAsync($"发送失败：{ex.Message}");
         }
         finally
         {
             isSending = false;
+            StateHasChanged();
         }
     }
 }

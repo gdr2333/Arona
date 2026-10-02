@@ -1,226 +1,500 @@
-@page "/config"
-@rendermode InteractiveServer
+@page "/Config"
+@using Arona.Datas.InMemory
 @using Arona.Datas.Storage
+@using Arona.Services
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.Extensions.Logging
+
+@rendermode InteractiveServer
+
 @inject MainDbContext DbContext
+@inject AIModels AIModels
+@inject INotificationService NotificationService
 @inject ILogger<Config> Logger
 
-<PageTitle>配置 - Arona</PageTitle>
+<PageTitle>设置</PageTitle>
 
-<div class="config-page">
-    <PageHeader Title="配置管理" />
+<FluentProviders />
 
-    <table class="config-table">
-        <thead>
-            <tr>
-                <th>Key</th>
-                <th>说明</th>
-                <th>Value</th>
-                <th>操作</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var item in configList)
-            {
-                var current = item;
-                var meta = GetMeta(current.Id);
-                <tr>
-                    <td class="config-key">@current.Id</td>
-                    <td class="config-desc">
-                        <strong>@meta.Title</strong>
-                        <br />
-                        <span class="config-hint">@meta.Description</span>
-                    </td>
-                    <td>
-                        @if (meta.Type == ConfigType.ChatModel)
-                        {
-                            <select @bind="current.Value" class="config-select">
-                                <option value="">— 未选择 —</option>
-                                @foreach (var opt in chatModelOptions)
-                                {
-                                    <option value="@opt">@opt</option>
-                                }
-                            </select>
-                        }
-                        else if (meta.Type == ConfigType.EmbeddingModel)
-                        {
-                            <select @bind="current.Value" class="config-select">
-                                <option value="">— 未选择 —</option>
-                                @foreach (var opt in embeddingModelOptions)
-                                {
-                                    <option value="@opt">@opt</option>
-                                }
-                            </select>
-                        }
-                        else if (meta.Type == ConfigType.MultilineText)
-                        {
-                            <FluentTextArea @bind-Value="current.Value" Rows="4" Style="width:100%;" />
-                        }
-                        else
-                        {
-                            <FluentTextInput @bind-Value="current.Value" Style="width:100%;" />
-                        }
-                    </td>
-                    <td class="config-actions">
-                        <FluentButton OnClick="() => SaveAsync(current)">保存</FluentButton>
-                        <FluentButton OnClick="() => DeleteAsync(current.Id)" Appearance="ButtonAppearance.Outline">删除</FluentButton>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
+<FluentStack Orientation="Orientation.Vertical">
+    <h1>设置</h1>
 
-    <AddFormCard Title="添加新配置" Message="@addMessage">
-        <label>键名</label>
-        <select @bind="newId" class="config-select">
-            <option value="">— 手动输入 —</option>
-            @foreach (var kv in KnownConfigs)
-            {
-                <option value="@kv.Key">@kv.Key — @kv.Value.Title</option>
-            }
-        </select>
-        <FluentTextInput @bind-Value="newId" Placeholder="或手动输入 Key" Style="margin-top:.25rem;" />
-        <label>值</label>
-        <FluentTextArea @bind-Value="newValue" Rows="3" Style="width:100%;" />
-        <FluentButton OnClick="AddAsync" Appearance="ButtonAppearance.Primary" Disabled="string.IsNullOrWhiteSpace(newId)">添加</FluentButton>
-    </AddFormCard>
-</div>
+    <FluentTabs ActiveTabId="@activeTabId">
+        <FluentTab Id="providers" Header="提供商">
+            <h3>API 提供商</h3>
+            <p class="config-hint">管理 OpenAI 兼容接口的提供商（Endpoint、ApiKey）。</p>
+            <table class="config-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>名称</th>
+                        <th>ApiKey</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in providers)
+                    {
+                        <tr>
+                            <td class="config-key">@p.Id</td>
+                            <td>@p.Name</td>
+                            <td>@MaskKey(p.ApiKey)</td>
+                            <td class="config-actions">
+                                <FluentButton OnClick="@(async e => await DeleteProviderAsync(p.Id))">删除</FluentButton>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <AddFormCard Title="添加提供商">
+                <FluentTextInput @bind-Value="newProviderId" Label="ID" />
+                <FluentTextInput @bind-Value="newProviderName" Label="名称" />
+                <FluentTextInput @bind-Value="newProviderKey" Label="ApiKey" />
+                <FluentButton OnClick="AddProviderAsync" Appearance="ButtonAppearance.Primary">添加</FluentButton>
+            </AddFormCard>
+        </FluentTab>
 
-@code {
-    private List<StringConfig> configList = [];
-    private List<string> chatModelOptions = [];
-    private List<string> embeddingModelOptions = [];
-    private string newId = "";
-    private string newValue = "";
-    private string addMessage = "";
+        <FluentTab Id="models" Header="模型">
+            <h3>聊天模型</h3>
+            <table class="config-table">
+                <thead>
+                    <tr>
+                        <th>提供商</th>
+                        <th>ModelId</th>
+                        <th>名称</th>
+                        <th>Endpoint</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var m in chatModels)
+                    {
+                        <tr>
+                            <td class="config-key">@m.ProviderId</td>
+                            <td>@m.ModelId</td>
+                            <td>@m.ModelName</td>
+                            <td>@m.ModelEndpoint</td>
+                            <td class="config-actions">
+                                <FluentButton OnClick="@(async e => await DeleteChatModelAsync(m.ProviderId, m.ModelId))">删除</FluentButton>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <AddFormCard Title="添加聊天模型">
+                <select @bind="newChatProviderId" class="config-select">
+                    <option value="">选择提供商</option>
+                    @foreach (var p in providers)
+                    {
+                        <option value="@p.Id">@p.Id (@p.Name)</option>
+                    }
+                </select>
+                <FluentTextInput @bind-Value="newChatModelId" Label="ModelId（API 标识符）" />
+                <FluentTextInput @bind-Value="newChatModelName" Label="显示名称" />
+                <FluentTextInput @bind-Value="newChatEndpoint" Label="Endpoint" />
+                <FluentButton OnClick="AddChatModelAsync" Appearance="ButtonAppearance.Primary">添加</FluentButton>
+            </AddFormCard>
 
-    private enum ConfigType { PlainText, MultilineText, Integer, ChatModel, EmbeddingModel }
+            <h3>嵌入模型</h3>
+            <table class="config-table">
+                <thead>
+                    <tr>
+                        <th>提供商</th>
+                        <th>ModelId</th>
+                        <th>名称</th>
+                        <th>Endpoint</th>
+                        <th>维度</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var m in embeddingModels)
+                    {
+                        <tr>
+                            <td class="config-key">@m.ProviderId</td>
+                            <td>@m.ModelId</td>
+                            <td>@m.ModelName</td>
+                            <td>@m.ModelEndpoint</td>
+                            <td>@m.Dimensions</td>
+                            <td class="config-actions">
+                                <FluentButton OnClick="@(async e => await DeleteEmbeddingModelAsync(m.ProviderId, m.ModelId))">删除</FluentButton>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <AddFormCard Title="添加嵌入模型">
+                <select @bind="newEmbeddingProviderId" class="config-select">
+                    <option value="">选择提供商</option>
+                    @foreach (var p in providers)
+                    {
+                        <option value="@p.Id">@p.Id (@p.Name)</option>
+                    }
+                </select>
+                <FluentTextInput @bind-Value="newEmbeddingModelId" Label="ModelId（API 标识符）" />
+                <FluentTextInput @bind-Value="newEmbeddingModelName" Label="显示名称" />
+                <FluentTextInput @bind-Value="newEmbeddingEndpoint" Label="Endpoint" />
+                <FluentTextInput @bind-Value="newEmbeddingDims" Label="维度" TextInputType="TextInputType.Number" />
+                <FluentButton OnClick="AddEmbeddingModelAsync" Appearance="ButtonAppearance.Primary">添加</FluentButton>
+            </AddFormCard>
+        </FluentTab>
 
-    private sealed record ConfigMeta(string Title, string Description, ConfigType Type);
+        <FluentTab Id="configs" Header="配置项">
+            <h3>系统配置</h3>
+            <p class="config-hint">系统核心配置项。群黑名单请到「黑名单管理」页面设置。</p>
 
-    private static readonly Dictionary<string, ConfigMeta> KnownConfigs = new()
-    {
-        ["Prompt"] = new("Agent 系统提示词", "决定 Agent 的行为与人设，作为 instructions 传给模型。", ConfigType.MultilineText),
-        ["ContextLength"] = new("滑动窗口大小", "从数据库加载的最近消息条数（正整数），用于 Agent 上下文窗口。", ConfigType.Integer),
-        ["ChatModel"] = new("聊天模型", "当前使用的聊天模型，格式为 {ProviderId}:{ModelName}。", ConfigType.ChatModel),
-        ["EmbeddingModel"] = new("嵌入模型", "当前使用的嵌入模型，格式为 {ProviderId}:{ModelName}。", ConfigType.EmbeddingModel),
-    };
+            <div class="config-add">
+                <h3>系统提示词（Prompt）</h3>
+                <FluentTextArea @bind-Value="editPrompt" Style="width:100%;min-height:160px;" />
+                <FluentButton OnClick="SavePromptAsync" Appearance="ButtonAppearance.Primary" Style="margin-top:8px;">保存</FluentButton>
+            </div>
 
-    private static ConfigMeta GetMeta(string id) =>
-        KnownConfigs.TryGetValue(id, out var m) ? m : new ConfigMeta("（未知配置项）", "未在代码中引用的自定义配置。", ConfigType.PlainText);
+            <div class="config-add">
+                <h3>滑动窗口大小（ContextLength）</h3>
+                <FluentTextInput @bind-Value="editContextLength" TextInputType="TextInputType.Number" Style="max-width:200px;" />
+                <FluentButton OnClick="SaveContextLengthAsync" Appearance="ButtonAppearance.Primary" Style="margin-top:8px;">保存</FluentButton>
+            </div>
+
+            <div class="config-add">
+                <h3>聊天模型（ChatModel）</h3>
+                <select @bind="editChatModel" class="config-select" style="max-width:400px;">
+                    <option value="">未选择</option>
+                    @foreach (var m in chatModels)
+                    {
+                        var v = $"{m.ProviderId}:{m.ModelName}";
+                        <option value="@v">@v</option>
+                    }
+                </select>
+                <FluentButton OnClick="SaveChatModelAsync" Appearance="ButtonAppearance.Primary" Style="margin-top:8px;">保存</FluentButton>
+            </div>
+
+            <div class="config-add">
+                <h3>嵌入模型（EmbeddingModel）</h3>
+                <select @bind="editEmbeddingModel" class="config-select" style="max-width:400px;">
+                    <option value="">未选择</option>
+                    @foreach (var m in embeddingModels)
+                    {
+                        var v = $"{m.ProviderId}:{m.ModelName}";
+                        <option value="@v">@v</option>
+                    }
+                </select>
+                <FluentButton OnClick="SaveEmbeddingModelAsync" Appearance="ButtonAppearance.Primary" Style="margin-top:8px;">保存</FluentButton>
+            </div>
+
+            <h3>其他配置项</h3>
+            <table class="config-table">
+                <thead>
+                    <tr>
+                        <th>键</th>
+                        <th>值</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in otherConfigs)
+                    {
+                        <tr>
+                            <td class="config-key">@c.Id</td>
+                            <td class="config-desc">
+                                <FluentTextInput @bind-Value="c.Value" Style="width:100%;" />
+                            </td>
+                            <td class="config-actions">
+                                <FluentButton OnClick="@(async e => await SaveConfigAsync(c.Id))">保存</FluentButton>
+                                <FluentButton OnClick="@(async e => await DeleteConfigAsync(c.Id))">删除</FluentButton>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <AddFormCard Title="添加配置项">
+                <FluentTextInput @bind-Value="newConfigId" Label="键" />
+                <FluentTextArea @bind-Value="newConfigValue" Label="值" />
+                <FluentButton OnClick="AddConfigAsync" Appearance="ButtonAppearance.Primary">添加</FluentButton>
+            </AddFormCard>
+        </FluentTab>
+    </FluentTabs>
+</FluentStack>
+
+@code
+{
+    private string activeTabId = "providers";
+
+    private List<ApiProvider> providers = [];
+    private List<ChatModel> chatModels = [];
+    private List<EmbeddingModel> embeddingModels = [];
+    private List<StringConfig> configs = [];
+    private List<StringConfig> otherConfigs = [];
+
+    private static readonly HashSet<string> HiddenKeys =
+        ["Prompt", "ContextLength", "ChatModel", "EmbeddingModel", "GroupBlacklist"];
+
+    private string editPrompt { get; set; } = "";
+    private string editContextLength { get; set; } = "";
+    private string editChatModel { get; set; } = "";
+    private string editEmbeddingModel { get; set; } = "";
+
+    private string newProviderId { get; set; } = "";
+    private string newProviderName { get; set; } = "";
+    private string newProviderKey { get; set; } = "";
+
+    private string newChatProviderId { get; set; } = "";
+    private string newChatModelId { get; set; } = "";
+    private string newChatModelName { get; set; } = "";
+    private string newChatEndpoint { get; set; } = "";
+
+    private string newEmbeddingProviderId { get; set; } = "";
+    private string newEmbeddingModelId { get; set; } = "";
+    private string newEmbeddingModelName { get; set; } = "";
+    private string newEmbeddingEndpoint { get; set; } = "";
+    private string newEmbeddingDims { get; set; } = "";
+
+    private string newConfigId { get; set; } = "";
+    private string newConfigValue { get; set; } = "";
 
     protected override async Task OnInitializedAsync()
     {
-        Logger.LogInformation("初始化配置页面");
-        await LoadAsync();
-        await LoadModelOptionsAsync();
+        await ReloadAllAsync();
     }
 
-    private async Task LoadAsync()
+    private async Task ReloadAllAsync()
+    {
+        providers = await DbContext.ApiProviders.AsNoTracking().ToListAsync();
+        chatModels = await DbContext.ChatModels.AsNoTracking().ToListAsync();
+        embeddingModels = await DbContext.EmbeddingModels.AsNoTracking().ToListAsync();
+        configs = await DbContext.Configs.ToListAsync();
+        otherConfigs = configs.Where(c => !HiddenKeys.Contains(c.Id)).ToList();
+        editPrompt = configs.FirstOrDefault(c => c.Id == "Prompt")?.Value ?? "";
+        editContextLength = configs.FirstOrDefault(c => c.Id == "ContextLength")?.Value ?? "";
+        editChatModel = configs.FirstOrDefault(c => c.Id == "ChatModel")?.Value ?? "";
+        editEmbeddingModel = configs.FirstOrDefault(c => c.Id == "EmbeddingModel")?.Value ?? "";
+    }
+
+    private static string MaskKey(string key) =>
+        string.IsNullOrEmpty(key) ? "(空)" : key.Length <= 4 ? new string('*', key.Length) : key[..4] + new string('*', Math.Min(key.Length - 4, 20));
+
+    private async Task ReloadModelsAsync()
     {
         try
         {
-            configList = await DbContext.Configs.AsNoTracking().OrderBy(c => c.Id).ToListAsync();
-            Logger.LogDebug("加载配置列表：{Count} 项", configList.Count);
+            AIModels.Reload(DbContext);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "加载配置列表失败");
+            Logger.LogWarning(ex, "重载 AIModels 失败");
+            await NotificationService.ShowWarningToastAsync($"模型重载失败：{ex.Message}");
         }
     }
 
-    private async Task LoadModelOptionsAsync()
+    private async Task AddProviderAsync()
     {
-        try
+        if (string.IsNullOrWhiteSpace(newProviderId) || string.IsNullOrWhiteSpace(newProviderName))
         {
-            chatModelOptions = await (
-                from m in DbContext.ChatModels
-                join p in DbContext.ApiProviders on m.ProviderId equals p.Id
-                orderby p.Id, m.ModelName
-                select $"{p.Id}:{m.ModelName}"
-            ).ToListAsync();
-
-            embeddingModelOptions = await (
-                from m in DbContext.EmbeddingModels
-                join p in DbContext.ApiProviders on m.ProviderId equals p.Id
-                orderby p.Id, m.ModelName
-                select $"{p.Id}:{m.ModelName}"
-            ).ToListAsync();
-
-            Logger.LogDebug("加载模型选项：{Chat} 个聊天模型，{Emb} 个嵌入模型", chatModelOptions.Count, embeddingModelOptions.Count);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "加载模型选项失败");
-        }
-    }
-
-    private async Task SaveAsync(StringConfig item)
-    {
-        try
-        {
-            var entity = await DbContext.Configs.FindAsync(item.Id);
-            if (entity is null)
-            {
-                Logger.LogWarning("配置 {Key} 不存在，无法更新", item.Id);
-                return;
-            }
-            entity.Value = item.Value;
-            await DbContext.SaveChangesAsync();
-            Logger.LogInformation("更新配置 {Key}", item.Id);
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "更新配置 {Key} 失败", item.Id);
-        }
-    }
-
-    private async Task DeleteAsync(string id)
-    {
-        try
-        {
-            var entity = await DbContext.Configs.FindAsync(id);
-            if (entity is null)
-                return;
-            DbContext.Configs.Remove(entity);
-            await DbContext.SaveChangesAsync();
-            Logger.LogInformation("删除配置 {Key}", id);
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "删除配置 {Key} 失败", id);
-        }
-    }
-
-    private async Task AddAsync()
-    {
-        addMessage = "";
-        var key = newId.Trim();
-        if (string.IsNullOrWhiteSpace(key))
+            await NotificationService.ShowErrorToastAsync("ID 和名称不能为空。");
             return;
+        }
+        if (await DbContext.ApiProviders.AnyAsync(p => p.Id == newProviderId))
+        {
+            await NotificationService.ShowErrorToastAsync($"提供商 {newProviderId} 已存在。");
+            return;
+        }
+        DbContext.ApiProviders.Add(new ApiProvider
+        {
+            Id = newProviderId.Trim(),
+            Name = newProviderName.Trim(),
+            ApiKey = newProviderKey
+        });
+        await DbContext.SaveChangesAsync();
+        Logger.LogInformation("添加提供商 {Id}", newProviderId);
+        await NotificationService.ShowInfoToastAsync("已添加提供商。");
+        newProviderId = newProviderName = newProviderKey = "";
+        await ReloadAllAsync();
+    }
 
+    private async Task DeleteProviderAsync(string id)
+    {
+        var p = await DbContext.ApiProviders.FindAsync(id);
+        if (p is null) return;
         try
         {
-            if (await DbContext.Configs.AnyAsync(c => c.Id == key))
-            {
-                addMessage = $"配置键 \"{key}\" 已存在。";
-                Logger.LogWarning("添加配置失败：键 {Key} 已存在", key);
-                return;
-            }
-            DbContext.Configs.Add(new StringConfig { Id = key, Value = newValue });
+            DbContext.ApiProviders.Remove(p);
             await DbContext.SaveChangesAsync();
-            Logger.LogInformation("添加配置 {Key}", key);
-            newId = "";
-            newValue = "";
-            await LoadAsync();
+            Logger.LogInformation("删除提供商 {Id}", id);
+            await NotificationService.ShowInfoToastAsync("已删除提供商。");
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "添加配置 {Key} 失败", key);
-            addMessage = $"添加失败: {ex.Message}";
+            Logger.LogWarning(ex, "删除提供商失败");
+            await NotificationService.ShowErrorToastAsync($"删除失败（可能有关联模型）：{ex.Message}");
         }
+        await ReloadAllAsync();
+    }
+
+    private async Task AddChatModelAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newChatProviderId) || string.IsNullOrWhiteSpace(newChatModelId)
+            || string.IsNullOrWhiteSpace(newChatModelName) || string.IsNullOrWhiteSpace(newChatEndpoint))
+        {
+            await NotificationService.ShowErrorToastAsync("请填写完整信息。");
+            return;
+        }
+        if (!Uri.TryCreate(newChatEndpoint, UriKind.Absolute, out var endpoint))
+        {
+            await NotificationService.ShowErrorToastAsync("Endpoint 格式无效。");
+            return;
+        }
+        if (await DbContext.ChatModels.AnyAsync(m => m.ProviderId == newChatProviderId && m.ModelId == newChatModelId))
+        {
+            await NotificationService.ShowErrorToastAsync("该模型已存在。");
+            return;
+        }
+        DbContext.ChatModels.Add(new ChatModel
+        {
+            ProviderId = newChatProviderId,
+            ModelId = newChatModelId.Trim(),
+            ModelName = newChatModelName.Trim(),
+            ModelEndpoint = endpoint
+        });
+        await DbContext.SaveChangesAsync();
+        Logger.LogInformation("添加聊天模型 {Provider}:{Id}", newChatProviderId, newChatModelId);
+        await NotificationService.ShowInfoToastAsync("已添加聊天模型。");
+        newChatModelId = newChatModelName = newChatEndpoint = "";
+        await ReloadAllAsync();
+    }
+
+    private async Task DeleteChatModelAsync(string providerId, string modelId)
+    {
+        var m = await DbContext.ChatModels.FindAsync(modelId, providerId);
+        if (m is null) return;
+        DbContext.ChatModels.Remove(m);
+        await DbContext.SaveChangesAsync();
+        Logger.LogInformation("删除聊天模型 {Provider}:{Id}", providerId, modelId);
+        await NotificationService.ShowInfoToastAsync("已删除聊天模型。");
+        await ReloadAllAsync();
+        await ReloadModelsAsync();
+    }
+
+    private async Task AddEmbeddingModelAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newEmbeddingProviderId) || string.IsNullOrWhiteSpace(newEmbeddingModelId)
+            || string.IsNullOrWhiteSpace(newEmbeddingModelName) || string.IsNullOrWhiteSpace(newEmbeddingEndpoint))
+        {
+            await NotificationService.ShowErrorToastAsync("请填写完整信息。");
+            return;
+        }
+        if (!Uri.TryCreate(newEmbeddingEndpoint, UriKind.Absolute, out var endpoint))
+        {
+            await NotificationService.ShowErrorToastAsync("Endpoint 格式无效。");
+            return;
+        }
+        if (!int.TryParse(newEmbeddingDims, out var dims) || dims <= 0)
+        {
+            await NotificationService.ShowErrorToastAsync("维度必须是正整数。");
+            return;
+        }
+        if (await DbContext.EmbeddingModels.AnyAsync(m => m.ProviderId == newEmbeddingProviderId && m.ModelId == newEmbeddingModelId))
+        {
+            await NotificationService.ShowErrorToastAsync("该模型已存在。");
+            return;
+        }
+        DbContext.EmbeddingModels.Add(new EmbeddingModel
+        {
+            ProviderId = newEmbeddingProviderId,
+            ModelId = newEmbeddingModelId.Trim(),
+            ModelName = newEmbeddingModelName.Trim(),
+            ModelEndpoint = endpoint,
+            Dimensions = dims
+        });
+        await DbContext.SaveChangesAsync();
+        Logger.LogInformation("添加嵌入模型 {Provider}:{Id}", newEmbeddingProviderId, newEmbeddingModelId);
+        await NotificationService.ShowInfoToastAsync("已添加嵌入模型。");
+        newEmbeddingModelId = newEmbeddingModelName = newEmbeddingEndpoint = newEmbeddingDims = "";
+        await ReloadAllAsync();
+    }
+
+    private async Task DeleteEmbeddingModelAsync(string providerId, string modelId)
+    {
+        var m = await DbContext.EmbeddingModels.FindAsync(modelId, providerId);
+        if (m is null) return;
+        DbContext.EmbeddingModels.Remove(m);
+        await DbContext.SaveChangesAsync();
+        Logger.LogInformation("删除嵌入模型 {Provider}:{Id}", providerId, modelId);
+        await NotificationService.ShowInfoToastAsync("已删除嵌入模型。");
+        await ReloadAllAsync();
+        await ReloadModelsAsync();
+    }
+
+    private async Task SaveKnownConfigAsync(string id, string value)
+    {
+        var db = await DbContext.Configs.FindAsync(id);
+        if (db is not null)
+            db.Value = value;
+        else
+            DbContext.Configs.Add(new StringConfig { Id = id, Value = value });
+        await DbContext.SaveChangesAsync();
+        Logger.LogInformation("保存配置项 {Id}", id);
+        await NotificationService.ShowInfoToastAsync("已保存。");
+        if (id is "ChatModel" or "EmbeddingModel")
+            await ReloadModelsAsync();
+    }
+
+    private Task SavePromptAsync() => SaveKnownConfigAsync("Prompt", editPrompt);
+
+    private Task SaveContextLengthAsync() => SaveKnownConfigAsync("ContextLength", editContextLength);
+
+    private Task SaveChatModelAsync() => SaveKnownConfigAsync("ChatModel", editChatModel);
+
+    private Task SaveEmbeddingModelAsync() => SaveKnownConfigAsync("EmbeddingModel", editEmbeddingModel);
+
+    private async Task SaveConfigAsync(string id)
+    {
+        var c = otherConfigs.FirstOrDefault(x => x.Id == id);
+        if (c is null) return;
+        var db = await DbContext.Configs.FindAsync(id);
+        if (db is not null)
+        {
+            db.Value = c.Value;
+            await DbContext.SaveChangesAsync();
+        }
+        Logger.LogInformation("保存配置项 {Id}", id);
+        await NotificationService.ShowInfoToastAsync("已保存。");
+    }
+
+    private async Task DeleteConfigAsync(string id)
+    {
+        var c = await DbContext.Configs.FindAsync(id);
+        if (c is null) return;
+        DbContext.Configs.Remove(c);
+        await DbContext.SaveChangesAsync();
+        Logger.LogInformation("删除配置项 {Id}", id);
+        await NotificationService.ShowInfoToastAsync("已删除配置项。");
+        await ReloadAllAsync();
+        if (id is "ChatModel" or "EmbeddingModel")
+            await ReloadModelsAsync();
+    }
+
+    private async Task AddConfigAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newConfigId))
+        {
+            await NotificationService.ShowErrorToastAsync("键不能为空。");
+            return;
+        }
+        var key = newConfigId.Trim();
+        if (HiddenKeys.Contains(key))
+        {
+            await NotificationService.ShowErrorToastAsync($"「{key}」是系统配置项，不能在此添加。");
+            return;
+        }
+        if (await DbContext.Configs.AnyAsync(c => c.Id == key))
+        {
+            await NotificationService.ShowErrorToastAsync($"配置项 {key} 已存在。");
+            return;
+        }
+        DbContext.Configs.Add(new StringConfig { Id = key, Value = newConfigValue });
+        await DbContext.SaveChangesAsync();
+        Logger.LogInformation("添加配置项 {Id}", key);
+        await NotificationService.ShowInfoToastAsync("已添加配置项。");
+        newConfigId = newConfigValue = "";
+        await ReloadAllAsync();
     }
 }

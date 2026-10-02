@@ -1,58 +1,31 @@
 ﻿@inherits LayoutComponentBase
 
-<div class="app-shell">
-    <aside class="app-sidebar @(isCollapsed ? "collapsed" : "") @(isMobileOpen ? "mobile-open" : "")">
-        <div class="sidebar-header">
-            <a href="/" class="sidebar-brand">
-                <span class="brand-mark">A</span>
-                <span class="brand-text">Arona</span>
-            </a>
-            <button class="sidebar-toggle" @onclick="ToggleCollapse" aria-label="折叠导航">
-                @(isCollapsed ? "»" : "«")
-            </button>
-        </div>
-        <nav class="sidebar-nav">
-            <NavLink href="/chat" class="nav-item" Match="NavLinkMatch.All">
-                <span class="nav-icon">💬</span><span class="nav-label">对话</span>
-            </NavLink>
-            <NavLink href="/sessions" class="nav-item" Match="NavLinkMatch.All">
-                <span class="nav-icon">📋</span><span class="nav-label">会话</span>
-            </NavLink>
-            <NavLink href="/memory" class="nav-item" Match="NavLinkMatch.All">
-                <span class="nav-icon">🧠</span><span class="nav-label">记忆</span>
-            </NavLink>
-            <NavLink href="/config" class="nav-item" Match="NavLinkMatch.All">
-                <span class="nav-icon">⚙️</span><span class="nav-label">配置</span>
-            </NavLink>
-            <NavLink href="/providers" class="nav-item" Match="NavLinkMatch.All">
-                <span class="nav-icon">🔌</span><span class="nav-label">供应商</span>
-            </NavLink>
-            <NavLink href="/models" class="nav-item" Match="NavLinkMatch.All">
-                <span class="nav-icon">🤖</span><span class="nav-label">模型</span>
-            </NavLink>
-            <NavLink href="/blacklist" class="nav-item" Match="NavLinkMatch.All">
-                <span class="nav-icon">🚫</span><span class="nav-label">黑名单</span>
-            </NavLink>
-        </nav>
-        <div class="sidebar-foot">Arona · AI Agent</div>
-    </aside>
-    @if (isMobileOpen)
-    {
-        <div class="sidebar-backdrop" @onclick="CloseMobile"></div>
-    }
-    <main class="app-main">
-        <button class="mobile-menu-btn" @onclick="ToggleMobile" aria-label="菜单">☰</button>
-        @Body
-    </main>
-</div>
+<FluentStack Orientation="Orientation.Horizontal">
+    <FluentNav Width="260px">
+        <FluentNavItem Href="/Chat">
+            聊天
+        </FluentNavItem>
+        <FluentNavItem Href="/Config">
+            设置
+        </FluentNavItem>
+        <FluentNavItem Href="/History">
+            对话历史
+        </FluentNavItem>
+        <FluentNavItem Href="/Facts">
+            记忆管理
+        </FluentNavItem>
+        <FluentNavItem Href="/BlackList">
+            黑名单管理
+        </FluentNavItem>
+    </FluentNav>
+    @Body
+</FluentStack>
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.
     <a href="." class="reload">Reload</a>
     <span class="dismiss">🗙</span>
 </div>
-
-<FluentProviders />
 
 @code {
     private bool isCollapsed;

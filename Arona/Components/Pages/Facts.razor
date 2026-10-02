@@ -1,0 +1,214 @@
+@page "/Facts"
+@using Arona.Datas
+@using Arona.Datas.Storage
+@using Arona.Services
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.Extensions.Logging
+
+@rendermode InteractiveServer
+
+@inject MainDbContext DbContext
+@inject EmbeddingService EmbeddingService
+@inject INotificationService NotificationService
+@inject ILogger<Facts> Logger
+
+<PageTitle>记忆管理</PageTitle>
+
+<FluentProviders />
+
+<FluentStack Orientation="Orientation.Vertical">
+    <h1>记忆管理</h1>
+    <p>管理 Agent 的长期记忆（Fact）。全局记忆对所有会话可见，会话专属记忆仅对指定会话可见。</p>
+
+    <FluentStack Orientation="Orientation.Horizontal">
+        <FluentTextInput @bind-Value="newFact" Label="要添加的记忆" Style="min-width:320px;"/>
+        <select @bind="newFactScope" class="config-select" style="align-self:flex-end;">
+            <option value="global">全局</option>
+            <option value="session">会话专属</option>
+        </select>
+        <FluentButton OnClick="AddAsync" Appearance="ButtonAppearance.Primary">添加记忆</FluentButton>
+    </FluentStack>
+    @if (newFactScope == "session")
+    {
+        <FluentTextInput @bind-Value="newFactSessionId" Label="会话 ID" Style="min-width:320px;"/>
+    }
+
+    <FluentStack Orientation="Orientation.Horizontal">
+        <FluentTextInput @bind-Value="searchKeyword" Label="要搜索的数据" Style="min-width:320px;"/>
+        <FluentButton OnClick="SearchByKeywordsAsync">全文搜索</FluentButton>
+        <FluentButton OnClick="SearchByVectorAsync">向量搜索</FluentButton>
+        <FluentButton OnClick="ResetAsync">重置</FluentButton>
+    </FluentStack>
+
+    <FluentDataGrid
+        GenerateHeader="DataGridGeneratedHeaderType.None"
+        DisplayMode="DataGridDisplayMode.Table"
+        TGridItem="string"
+        role="grid">
+        <FluentDataGridRow RowType="DataGridRowType.Header">
+            <FluentDataGridCell
+                GridColumn="1"
+                CellType="DataGridCellType.ColumnHeader">
+                ID
+            </FluentDataGridCell>
+            <FluentDataGridCell
+                GridColumn="2"
+                CellType="DataGridCellType.ColumnHeader">
+                内容
+            </FluentDataGridCell>
+            <FluentDataGridCell
+                GridColumn="3"
+                CellType="DataGridCellType.ColumnHeader">
+                所在会话
+            </FluentDataGridCell>
+            <FluentDataGridCell
+                GridColumn="4"
+                CellType="DataGridCellType.ColumnHeader">
+                记录时间（本地）
+            </FluentDataGridCell>
+            <FluentDataGridCell
+                GridColumn="5"
+                CellType="DataGridCellType.ColumnHeader">
+                操作
+            </FluentDataGridCell>
+        </FluentDataGridRow>
+        @foreach(var i in searchResult)
+        {
+            <FluentDataGridRow>
+                <FluentDataGridCell GridColumn="1">
+                    @i.Id
+                </FluentDataGridCell>
+                <FluentDataGridCell GridColumn="2">
+                    @i.Content
+                </FluentDataGridCell>
+                <FluentDataGridCell GridColumn="3">
+                    @(i.SessionId ?? "全局")
+                </FluentDataGridCell>
+                <FluentDataGridCell GridColumn="4">
+                    @i.UtcTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                </FluentDataGridCell>
+                <FluentDataGridCell GridColumn="5">
+                    <FluentButton OnClick="@(async e => await DeleteAsync(i.Id))">删除</FluentButton>
+                </FluentDataGridCell>
+            </FluentDataGridRow>
+        }
+    </FluentDataGrid>
+</FluentStack>
+
+@code
+{
+    string newFact { get; set; } = "";
+    string newFactScope { get; set; } = "global";
+    string newFactSessionId { get; set; } = "";
+    string searchKeyword { get; set; } = "";
+    List<Fact> searchResult { get; set; } = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAllAsync();
+    }
+
+    private async Task LoadAllAsync()
+    {
+        searchResult = await DbContext.Facts
+            .OrderByDescending(f => f.UtcTime)
+            .AsNoTracking()
+            .ToListAsync();
+    }
+
+    private static string BuildContains(string keywords)
+    {
+        var words = keywords.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return words.Length switch
+        {
+            0 => keywords,
+            1 => words[0],
+            _ => string.Join(" OR ", words)
+        };
+    }
+
+    private async Task AddAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newFact))
+        {
+            await NotificationService.ShowErrorToastAsync("记忆内容不能为空。");
+            return;
+        }
+        string? sessionId = null;
+        if (newFactScope == "session")
+        {
+            sessionId = newFactSessionId.Trim();
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                await NotificationService.ShowErrorToastAsync("会话 ID 不能为空。");
+                return;
+            }
+        }
+        var embedding = await EmbeddingService.ComputeAsync(newFact);
+        DbContext.Facts.Add(new Fact
+        {
+            Content = newFact,
+            Embedding = embedding,
+            UtcTime = DateTime.UtcNow,
+            SessionId = sessionId
+        });
+        await DbContext.SaveChangesAsync();
+        Logger.LogInformation("写入 Fact：scope={Scope}, session={Session}", newFactScope, sessionId);
+        await NotificationService.ShowInfoToastAsync("已添加记忆。");
+        newFact = "";
+        await LoadAllAsync();
+    }
+
+    private async Task SearchByKeywordsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(searchKeyword))
+        {
+            await LoadAllAsync();
+            return;
+        }
+        var condition = BuildContains(searchKeyword);
+        searchResult = await DbContext.Facts
+            .Where(f => EF.Functions.Contains(f.Content, condition))
+            .OrderByDescending(f => f.UtcTime)
+            .AsNoTracking()
+            .ToListAsync();
+        Logger.LogInformation("全文搜索 Fact：keywords={Keywords}, 结果={Count}", searchKeyword, searchResult.Count);
+    }
+
+    private async Task SearchByVectorAsync()
+    {
+        if (string.IsNullOrWhiteSpace(searchKeyword))
+        {
+            await LoadAllAsync();
+            return;
+        }
+        var queryVec = await EmbeddingService.ComputeAsync(searchKeyword);
+        searchResult = await DbContext.Facts
+            .OrderBy(f => EF.Functions.VectorDistance("cosine", f.Embedding, queryVec))
+            .Take(50)
+            .AsNoTracking()
+            .ToListAsync();
+        Logger.LogInformation("向量搜索 Fact：结果={Count}", searchResult.Count);
+    }
+
+    private async Task ResetAsync()
+    {
+        searchKeyword = "";
+        await LoadAllAsync();
+    }
+
+    private async Task DeleteAsync(long id)
+    {
+        var fact = await DbContext.Facts.FindAsync(id);
+        if (fact is null)
+        {
+            await NotificationService.ShowErrorToastAsync($"未找到 Fact（ID={id}）。");
+            return;
+        }
+        DbContext.Facts.Remove(fact);
+        await DbContext.SaveChangesAsync();
+        Logger.LogInformation("删除 Fact：id={Id}", id);
+        await NotificationService.ShowInfoToastAsync($"已删除 Fact（ID={id}）。");
+        await LoadAllAsync();
+    }
+}

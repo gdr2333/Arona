@@ -1,0 +1,192 @@
+@page "/History"
+@using Arona.Datas.Storage
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.Extensions.Logging
+
+@rendermode InteractiveServer
+
+@inject MainDbContext DbContext
+@inject INotificationService NotificationService
+@inject ILogger<History> Logger
+
+<PageTitle>对话历史</PageTitle>
+
+<FluentProviders />
+
+<FluentStack Orientation="Orientation.Vertical">
+    <h1>对话历史</h1>
+    <p>查看所有会话及其消息历史。</p>
+
+    <div class="filter-bar">
+        <div class="filter-tabs">
+            <button class="filter-tab @(filter == "all" ? "active" : "")" @onclick='@(() => SetFilterAsync("all"))'>全部</button>
+            <button class="filter-tab @(filter == "webui" ? "active" : "")" @onclick='@(() => SetFilterAsync("webui"))'>WebUI</button>
+            <button class="filter-tab @(filter == "private" ? "active" : "")" @onclick='@(() => SetFilterAsync("private"))'>私聊</button>
+            <button class="filter-tab @(filter == "group" ? "active" : "")" @onclick='@(() => SetFilterAsync("group"))'>群聊</button>
+        </div>
+    </div>
+
+    <table class="config-table">
+        <thead>
+            <tr>
+                <th>会话 ID</th>
+                <th>场景</th>
+                <th>消息数</th>
+                <th>最后消息时间</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var s in sessions)
+            {
+                <tr class="history-row">
+                    <td class="config-key">@s.Id</td>
+                    <td><span class="scenario-badge @GetScenarioClass(s.Id)">@GetScenarioLabel(s.Id)</span></td>
+                    <td>@s.MessageCount</td>
+                    <td>@(s.LastTime == DateTime.MinValue ? "—" : s.LastTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"))</td>
+                    <td class="config-actions">
+                        <FluentButton OnClick="@(async e => await ToggleExpandAsync(s.Id))">
+                            @(expandedSessionId == s.Id ? "收起" : "展开")
+                        </FluentButton>
+                        <FluentButton OnClick="@(async e => await DeleteSessionAsync(s.Id))">删除</FluentButton>
+                    </td>
+                </tr>
+                @if (expandedSessionId == s.Id)
+                {
+                    <tr class="history-row">
+                        <td colspan="5">
+                            <div class="session-history">
+                                @if (expandedMessages.Count == 0)
+                                {
+                                    <p class="empty-inline">暂无消息</p>
+                                }
+                                else
+                                {
+                                    @foreach (var m in expandedMessages)
+                                    {
+                                        <div class="history-msg">
+                                            <span class="history-role">@m.Role · @m.UtcTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span>
+                                            <div class="history-text">@m.Message</div>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+    @if (sessions.Count == 0)
+    {
+        <p class="empty-inline">暂无会话</p>
+    }
+</FluentStack>
+
+@code
+{
+    private string filter = "all";
+    private List<SessionListItem> sessions = [];
+    private string? expandedSessionId;
+    private List<HistoryMsg> expandedMessages = [];
+
+    private class SessionListItem
+    {
+        public string Id { get; set; } = "";
+        public int MessageCount { get; set; }
+        public DateTime LastTime { get; set; }
+    }
+
+    private record HistoryMsg(string Role, string Message, DateTime UtcTime);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSessionsAsync();
+    }
+
+    private async Task SetFilterAsync(string f)
+    {
+        filter = f;
+        expandedSessionId = null;
+        await LoadSessionsAsync();
+    }
+
+    private async Task LoadSessionsAsync()
+    {
+        var query = DbContext.ChatSessions.AsQueryable();
+        query = filter switch
+        {
+            "webui" => query.Where(s => s.Id.StartsWith("webui:")),
+            "private" => query.Where(s => s.Id.Contains(":private:")),
+            "group" => query.Where(s => s.Id.Contains(":group:")),
+            _ => query
+        };
+        sessions = await query
+            .Select(s => new SessionListItem
+            {
+                Id = s.Id,
+                MessageCount = s.Messages.Count,
+                LastTime = s.Messages.Any() ? s.Messages.Max(m => m.UtcTime) : DateTime.MinValue
+            })
+            .OrderByDescending(s => s.LastTime)
+            .AsNoTracking()
+            .ToListAsync();
+    }
+
+    private static string GetScenarioLabel(string id)
+    {
+        if (id.StartsWith("webui:")) return "WebUI";
+        if (id.Contains(":private:")) return "私聊";
+        if (id.Contains(":group:")) return "群聊";
+        return "其他";
+    }
+
+    private static string GetScenarioClass(string id)
+    {
+        if (id.StartsWith("webui:")) return "sc-webui";
+        if (id.Contains(":private:")) return "sc-private";
+        if (id.Contains(":group:")) return "sc-group";
+        return "sc-other";
+    }
+
+    private async Task ToggleExpandAsync(string sessionId)
+    {
+        if (expandedSessionId == sessionId)
+        {
+            expandedSessionId = null;
+            expandedMessages = [];
+            return;
+        }
+        expandedSessionId = sessionId;
+        expandedMessages = await DbContext.ChatMessages
+            .Where(m => m.SessionId == sessionId)
+            .OrderBy(m => m.UtcTime)
+            .Select(m => new HistoryMsg(m.Role, m.Message, m.UtcTime))
+            .AsNoTracking()
+            .ToListAsync();
+    }
+
+    private async Task DeleteSessionAsync(string sessionId)
+    {
+        var session = await DbContext.ChatSessions.FindAsync(sessionId);
+        if (session is null)
+        {
+            await NotificationService.ShowErrorToastAsync($"未找到会话 {sessionId}。");
+            return;
+        }
+        var messages = await DbContext.ChatMessages.Where(m => m.SessionId == sessionId).ToListAsync();
+        DbContext.ChatMessages.RemoveRange(messages);
+        var facts = await DbContext.Facts.Where(f => f.SessionId == sessionId).ToListAsync();
+        DbContext.Facts.RemoveRange(facts);
+        DbContext.ChatSessions.Remove(session);
+        await DbContext.SaveChangesAsync();
+        Logger.LogInformation("删除会话 {Id}（消息 {Msg}，Fact {Fact}）", sessionId, messages.Count, facts.Count);
+        await NotificationService.ShowInfoToastAsync($"已删除会话（消息 {messages.Count} 条，Fact {facts.Count} 条）。");
+        if (expandedSessionId == sessionId)
+        {
+            expandedSessionId = null;
+            expandedMessages = [];
+        }
+        await LoadSessionsAsync();
+    }
+}
