@@ -135,6 +135,7 @@
                 <FluentTextInput @bind-Value="newEmbeddingModelName" Label="显示名称" />
                 <FluentTextInput @bind-Value="newEmbeddingEndpoint" Label="Endpoint" />
                 <FluentTextInput @bind-Value="newEmbeddingDims" Label="维度" TextInputType="TextInputType.Number" />
+                <FluentCheckbox @bind-Value="newEmbeddingIsFixedDims" Label="是否为固定维度"/>
                 <FluentButton OnClick="AddEmbeddingModelAsync" Appearance="ButtonAppearance.Primary">添加</FluentButton>
             </AddFormCard>
         </FluentTab>
@@ -247,6 +248,7 @@
     private string newEmbeddingModelName { get; set; } = "";
     private string newEmbeddingEndpoint { get; set; } = "";
     private string newEmbeddingDims { get; set; } = "";
+    private bool newEmbeddingIsFixedDims { get; set; } = true;
 
     private string newConfigId { get; set; } = "";
     private string newConfigValue { get; set; } = "";
@@ -402,7 +404,8 @@
             ModelId = newEmbeddingModelId.Trim(),
             ModelName = newEmbeddingModelName.Trim(),
             ModelEndpoint = endpoint,
-            Dimensions = dims
+            Dimensions = dims,
+            IsFixedDimension = newEmbeddingIsFixedDims
         });
         await DbContext.SaveChangesAsync();
         Logger.LogInformation("添加嵌入模型 {Provider}:{Id}", newEmbeddingProviderId, newEmbeddingModelId);
